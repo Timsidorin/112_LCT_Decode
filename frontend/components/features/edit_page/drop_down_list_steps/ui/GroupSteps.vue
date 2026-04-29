@@ -1,9 +1,11 @@
 <template>
 	<q-btn-dropdown
-		class="absolute q-ma-lg steps-dropdown"
-		style="z-index: 1"
+		class="absolute q-ma-lg glass-panel steps-dropdown animate-fade-in"
+		style="z-index: 100"
 		dropdown-icon="menu"
 		color="primary"
+		flat
+		rounded
 		content-class="steps-dropdown-content"
 	>
 		<div class="step-group column">
@@ -53,19 +55,24 @@ const stepsArray = computed(() => (Array.isArray(steps.value) ? steps.value : []
 <style scoped>
 .step-group {
 	width: 100%;
-	min-width: 280px;
+	min-width: 300px;
+	padding: 8px 0;
 }
 
 .step-group-list {
-	max-height: 400px;
+	max-height: 440px;
 	overflow-y: auto;
 }
 </style>
 
 <style>
 .steps-dropdown-content {
-	border-radius: 12px !important;
-	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14) !important;
-	overflow: hidden;
+	border-radius: 16px !important;
+	box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18) !important;
+	background: var(--glass-bg) !important;
+	backdrop-filter: var(--glass-blur) !important;
+	-webkit-backdrop-filter: var(--glass-blur) !important;
+	border: 1px solid var(--glass-border) !important;
+	margin-top: 8px !important;
 }
 </style>

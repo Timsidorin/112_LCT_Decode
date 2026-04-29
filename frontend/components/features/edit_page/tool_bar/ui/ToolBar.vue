@@ -1,5 +1,5 @@
 <template>
-	<div class="tool-bar-container">
+	<div class="tool-bar-container animate-fade-in-up">
 		<!-- Предыдущий шаг -->
 		<q-btn
 			v-if="hasPreviousStep"
@@ -15,7 +15,7 @@
 		</q-btn>
 
 		<!-- Тулбар -->
-		<div class="tool-bar">
+		<div class="tool-bar glass-panel">
 			<q-btn
 				v-for="event in events"
 				:key="event.id"
@@ -191,14 +191,9 @@ const events = [
 
 .tool-bar {
 	display: flex;
-	gap: 2px;
-	background: rgba(255, 255, 255, 0.85);
-	backdrop-filter: blur(16px);
-	-webkit-backdrop-filter: blur(16px);
-	padding: 6px;
-	border-radius: 16px;
-	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1), 0 1px 4px rgba(0, 0, 0, 0.06);
-	border: 1px solid rgba(255, 255, 255, 0.6);
+	gap: 4px;
+	padding: 8px;
+	border-radius: 20px;
 }
 
 .tool-btn {
@@ -244,13 +239,8 @@ const events = [
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	background: rgba(255, 255, 255, 0.85);
-	backdrop-filter: blur(16px);
-	-webkit-backdrop-filter: blur(16px);
-	padding: 8px 14px;
-	border-radius: 12px;
-	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
-	border: 1px solid rgba(255, 255, 255, 0.6);
+	padding: 10px 16px;
+	border-radius: 14px;
 }
 
 .hotkey-panel-label {

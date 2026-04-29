@@ -45,104 +45,101 @@
 
 		<!-- Прохождение -->
 		<template v-else>
-			<header
-				class="play-top-bar"
-				:class="{ 'play-top-bar--viewport-only': hasSideTaskPanel }"
-			>
-				<div class="play-top-bar__left">
-					<q-btn
-						flat
-						no-caps
-						rounded
-						color="grey-8"
-						icon="home"
-						class="play-top-bar__home"
-						@click="confirmExitToHome"
-					>
-						<span class="play-top-bar__home-label gt-xs">На главную</span>
-						<q-tooltip>На главный экран</q-tooltip>
-					</q-btn>
-					<PassageStepList
-						:steps="steps"
-						:current-index="currentIndex"
-						@select-step="passage.selectStep"
-					/>
-				</div>
-				<div class="play-top-bar__spacer" aria-hidden="true" />
-				<div
-					v-if="durationMinutes > 0"
-					class="timer-panel"
-					:class="timerPanelClass"
+			<div class="play-layout premium-bg-container">
+				<header
+					class="play-top-bar"
+					:class="{ 'play-top-bar--viewport-only': hasSideTaskPanel }"
 				>
-					<div class="timer-panel__row">
-						<div class="timer-panel__icon-wrap">
-							<q-icon
-								:name="timer.timeRemaining.value > 0 ? 'schedule' : 'timer_off'"
-								size="22px"
-								class="timer-panel__icon"
+					<div class="play-top-bar__left">
+						<q-btn
+							flat
+							no-caps
+							rounded
+							color="grey-9"
+							icon="home"
+							class="play-top-bar__home glass-panel"
+							@click="confirmExitToHome"
+						>
+							<span class="play-top-bar__home-label gt-xs">На главную</span>
+							<q-tooltip>На главный экран</q-tooltip>
+						</q-btn>
+						<PassageStepList
+							:steps="steps"
+							:current-index="currentIndex"
+							@select-step="passage.selectStep"
+						/>
+					</div>
+					<div class="play-top-bar__spacer"></div>
+					<div class="play-top-bar__right">
+						<q-btn
+							v-if="hintsAvailable"
+							flat
+							round
+							dense
+							:icon="hintsEnabled ? 'lightbulb' : 'lightbulb_outline'"
+							:text-color="hintsEnabled ? 'amber-9' : 'grey-7'"
+							class="hint-btn glass-panel"
+							:class="{ 'hint-btn--pulse': hintPulseActive }"
+							@click="toggleHintsForCurrentStep"
+						>
+							<q-tooltip>
+								{{
+									hintsEnabled
+										? "Подсказки включены: после ошибки подсветим область"
+										: "Включить подсказки после ошибки"
+								}}
+							</q-tooltip>
+						</q-btn>
+
+						<div
+							v-if="durationMinutes > 0"
+							class="timer-panel glass-panel-dark"
+							:class="timerPanelClass"
+						>
+							<div class="timer-panel__row">
+								<div class="timer-panel__icon-wrap">
+									<q-icon
+										:name="timer.timeRemaining.value > 0 ? 'schedule' : 'timer_off'"
+										size="22px"
+										class="timer-panel__icon"
+									/>
+								</div>
+								<div class="timer-panel__main">
+									<div class="timer-panel__caption">
+										{{ timer.timeRemaining.value > 0 ? "Осталось времени" : "Лимит времени" }}
+									</div>
+									<div class="timer-panel__digits">
+										{{ timerDisplayValue }}
+									</div>
+								</div>
+							</div>
+							<q-linear-progress
+								v-if="timer.timeRemaining.value > 0"
+								:value="timer.timerProgress.value"
+								:color="timer.timeRemaining.value <= 60 ? 'warning' : 'primary'"
+								rounded
+								size="6px"
+								class="timer-panel__bar"
+								track-color="rgba(15, 23, 42, 0.08)"
 							/>
-						</div>
-						<div class="timer-panel__main">
-							<div class="timer-panel__caption">
-								{{ timer.timeRemaining.value > 0 ? "Осталось времени" : "Лимит времени" }}
-							</div>
-							<div class="timer-panel__digits">
-								{{ timerDisplayValue }}
-							</div>
 						</div>
 					</div>
-					<q-linear-progress
-						v-if="timer.timeRemaining.value > 0"
-						:value="timer.timerProgress.value"
-						:color="timer.timeRemaining.value <= 60 ? 'warning' : 'primary'"
-						rounded
-						size="6px"
-						class="timer-panel__bar"
-						track-color="rgba(15, 23, 42, 0.08)"
-					/>
-					<q-linear-progress
-						v-else
-						:value="1"
-						rounded
-						size="6px"
-						color="negative"
-						class="timer-panel__bar timer-panel__bar--over"
-						track-color="rgba(239, 68, 68, 0.15)"
-					/>
-				</div>
-			</header>
+				</header>
 
-			<!-- Шаг без скриншота -->
-			<div
-				v-if="selectedStep && !selectedStep.image_url"
-				class="no-image-state"
-			>
-				<q-icon name="image_not_supported" size="64px" color="grey-4" />
-				<p>У этого шага нет изображения</p>
-				<q-btn
-					unelevated
-					no-caps
-					rounded
-					color="primary"
-					:label="hasNextStep ? 'Следующий шаг' : 'Завершить'"
-					icon="arrow_forward"
-					@click="goNext"
-				/>
-			</div>
-
-			<!-- Скрин слева, задание справа — как окно программы -->
-			<template v-else>
-				<div class="play-layout">
+				<div class="play-layout__main">
 					<div class="play-layout__viewport">
-						<div class="flow-area">
-							<PassageFlowComponent
-								mode="passage"
-								:selected-step="selectedStep"
-								:show-hint-highlight="hintVisible"
-								@action-complete="onActionComplete"
-								@action-wrong="onActionWrong"
-							/>
-						</div>
+						<transition name="step-fade" mode="out-in">
+							<div :key="selectedStep?.id" class="flow-area">
+								<PassageFlowComponent
+									ref="flowComponentRef"
+									mode="passage"
+									:selected-step="selectedStep"
+									:show-hint-highlight="hintVisible"
+									@action-complete="onActionComplete"
+									@action-wrong="onActionWrong"
+								/>
+							</div>
+						</transition>
 						<PassageToolbar
 							:has-previous-step="hasPreviousStep"
 							:has-next-step="hasNextStep"
@@ -155,11 +152,11 @@
 							@toggle-hints="toggleHintsForCurrentStep"
 						/>
 					</div>
-					<aside class="play-layout__task">
+					<aside class="play-layout__task glass-panel">
 						<PassageTaskPanel :selected-step="selectedStep" />
 					</aside>
 				</div>
-			</template>
+			</div>
 		</template>
 	</div>
 </template>
@@ -200,6 +197,9 @@ const showCompletionModal = ref(false);
 const wrongAttempts = ref(0);
 const totalWrongSession = ref(0);
 const playStartedAtMs = ref(0);
+const flowComponentRef = ref(null);
+const hintPulseActive = ref(false);
+let hintPulseTimer = null;
 /** Подсказки по шагам: включение хранится отдельно для каждого шага */
 const hintsEnabledByStep = ref({});
 const hintsAvailable = computed(() => props.trainingData?.hints_enabled !== false);
@@ -252,7 +252,7 @@ const timer = usePassageTimer(durationMinutes, () => {
 	$q.notify({
 		color: "warning",
 		message: "Время вышло",
-		position: "top",
+		position: "bottom-right",
 		icon: "schedule",
 	});
 });
@@ -278,7 +278,7 @@ function onActionComplete() {
 		$q.notify({
 			color: "positive",
 			message: "Правильно!",
-			position: "top",
+			position: "bottom-right",
 			timeout: 900,
 		});
 	}
@@ -288,14 +288,24 @@ function onActionComplete() {
 function onActionWrong() {
 	wrongAttempts.value += 1;
 	totalWrongSession.value += 1;
+	if (flowComponentRef.value) {
+		flowComponentRef.value.triggerWrongFeedback();
+	}
+	
+	if (hintsAvailable.value && !hintsEnabled.value) {
+		hintPulseActive.value = true;
+		if (hintPulseTimer) clearTimeout(hintPulseTimer);
+		hintPulseTimer = setTimeout(() => { hintPulseActive.value = false; }, 2400);
+	}
+
 	$q.notify({
 		color: "negative",
 		message: !hintsAvailable.value
 			? "Неверно. Попробуйте ещё раз."
 			: hintsEnabled.value
 			? "Неверно. Включены подсказки — смотрите выделение на скрине или поле ввода."
-			: "Неверно. Попробуйте ещё раз. Можно включить подсказки кнопкой снизу.",
-		position: "top",
+			: "Неверно. Можно включить подсказки кнопкой 💡 (лампочка) на верхней панели справа.",
+		position: "bottom-right",
 	});
 }
 
@@ -386,10 +396,19 @@ function toggleHintsForCurrentStep() {
 
 .play-layout {
 	display: flex;
-	flex-direction: row-reverse;
+	flex-direction: column;
 	width: 100%;
 	height: 100%;
 	min-height: 0;
+	position: relative;
+}
+
+.play-layout__main {
+	display: flex;
+	flex-direction: row-reverse;
+	flex: 1;
+	min-height: 0;
+	width: 100%;
 	align-items: stretch;
 }
 
@@ -400,17 +419,17 @@ function toggleHintsForCurrentStep() {
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
-	background: #f0f1f5;
 }
 
 .play-layout__task {
-	width: min(420px, 38vw);
+	width: min(440px, 40vw);
 	flex-shrink: 0;
 	display: flex;
 	flex-direction: column;
 	min-height: 0;
-	background: #fafbfc;
-	border-right: 1px solid rgba(15, 23, 42, 0.08);
+	z-index: 100;
+	padding: 12px;
+	gap: 12px;
 }
 
 @media (max-width: 900px) {
@@ -420,8 +439,7 @@ function toggleHintsForCurrentStep() {
 
 	.play-layout__task {
 		width: 100%;
-		max-height: min(40vh, 320px);
-		border-right: none;
+		max-height: min(45vh, 400px);
 		border-top: 1px solid rgba(15, 23, 42, 0.08);
 	}
 
@@ -437,11 +455,11 @@ function toggleHintsForCurrentStep() {
 	top: 0;
 	left: 0;
 	right: 0;
-	z-index: 20;
+	z-index: 150;
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	padding: 10px 14px;
+	padding: 8px 12px;
 	min-height: 56px;
 	pointer-events: none;
 	box-sizing: border-box;
@@ -462,9 +480,43 @@ function toggleHintsForCurrentStep() {
 	pointer-events: none;
 }
 
-.play-top-bar > .timer-panel {
+.play-top-bar__right {
+	display: flex;
+	align-items: center;
+	gap: 12px;
 	pointer-events: auto;
-	flex-shrink: 0;
+}
+
+.hint-btn {
+	background: rgba(255, 255, 255, 0.9) !important;
+	border: 1px solid rgba(255, 255, 255, 0.6);
+	transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+	width: 44px;
+	height: 44px;
+}
+
+.hint-btn:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 8px 24px rgba(245, 158, 11, 0.25);
+}
+
+.hint-btn--pulse {
+	animation: hint-attention-pulse 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+	border-color: rgba(245, 158, 11, 0.7) !important;
+	background: rgba(254, 243, 199, 0.95) !important;
+	color: #d97706 !important;
+	z-index: 200;
+}
+
+@keyframes hint-attention-pulse {
+	0%, 100% { 
+		transform: scale(1); 
+		box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3) !important; 
+	}
+	50% { 
+		transform: scale(1.15); 
+		box-shadow: 0 8px 32px rgba(245, 158, 11, 0.7) !important; 
+	}
 }
 
 /*
@@ -472,8 +524,9 @@ function toggleHintsForCurrentStep() {
  * Совпадает с шириной .play-layout__task: min(420px, 38vw).
  */
 .play-top-bar--viewport-only {
-	left: min(420px, 38vw);
+	left: 0;
 	right: 0;
+	padding-left: calc(min(440px, 40vw) + 20px);
 }
 
 .play-top-bar__home {
@@ -538,15 +591,14 @@ function toggleHintsForCurrentStep() {
 .timer-panel__row {
 	display: flex;
 	align-items: center;
-	gap: 12px;
-	margin-bottom: 8px;
+	gap: 8px;
 }
 
 .timer-panel__icon-wrap {
 	flex-shrink: 0;
-	width: 40px;
-	height: 40px;
-	border-radius: 12px;
+	width: 32px;
+	height: 32px;
+	border-radius: 8px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -604,7 +656,7 @@ function toggleHintsForCurrentStep() {
 }
 
 .timer-panel__digits {
-	font-size: 26px;
+	font-size: 18px;
 	font-weight: 800;
 	font-variant-numeric: tabular-nums;
 	letter-spacing: 0.04em;

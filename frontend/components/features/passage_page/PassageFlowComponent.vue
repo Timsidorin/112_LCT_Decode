@@ -56,6 +56,10 @@
 							draggable="false"
 							@load="updateImageContentLayout"
 						/>
+						
+						<!-- Оверлеи визуальной обратной связи -->
+						<div v-if="showCorrectFeedback" class="feedback-overlay feedback-overlay--correct" />
+						<div v-if="showWrongFeedback" class="feedback-overlay feedback-overlay--wrong" />
 					<!-- Область действия: при включённых подсказках после ошибки — подсветка / автозаполнение текста -->
 					<div
 						v-if="showAreaVisible && area && (area.width > 0 && area.height > 0)"
@@ -98,8 +102,9 @@
 									ref="overlayInputRef"
 									v-model="inputValue"
 									class="overlay-input overlay-input--ghost-text"
-									:class="{ 'overlay-input--hint-typing': isHintTyping }"
+									:class="{ 'overlay-input--hint-typing': isHintTyping, 'overlay-input--error': isInputError }"
 									:style="overlayInputStyle"
+									rows="1"
 									wrap="off"
 									autocomplete="off"
 									spellcheck="false"
@@ -199,6 +204,13 @@ const props = defineProps({
 
 const emit = defineEmits(["action-complete", "action-wrong"]);
 
+defineExpose({
+	triggerWrongFeedback: () => {
+		showWrongFeedback.value = true;
+		setTimeout(() => { showWrongFeedback.value = false; }, 600);
+	}
+});
+
 const flowRef = ref(null);
 const imageWrapRef = ref(null);
 const screenshotAspectRef = ref(null);
@@ -218,6 +230,9 @@ const showViewportHint = ref(true);
 /** После верного действия: кадр «после» из AI до перехода на следующий шаг */
 const forcedAfterUrl = ref(null);
 const outcomeBusy = ref(false);
+
+const showCorrectFeedback = ref(false);
+const showWrongFeedback = ref(false);
 
 const displayScreenshotUrl = computed(
 	() => forcedAfterUrl.value || props.selectedStep?.image_url || ""
@@ -304,16 +319,22 @@ const imageContentFracs = ref(null);
 
 function updateImageContentLayout() {
 	const img = imgRef.value;
+	const aspectEl = screenshotAspectRef.value;
 	const step = props.selectedStep;
-	if (!img || !step?.photo_dimensions) {
+	if (!img || !aspectEl || !step?.photo_dimensions) {
 		imageContentFracs.value = null;
 		return;
 	}
 	const w = step.photo_dimensions.width || 1;
 	const h = step.photo_dimensions.height || 1;
-	const rect = img.getBoundingClientRect();
-	const bw = rect.width;
-	const bh = rect.height;
+	// Используем размер .screenshot-aspect (position: relative), а не img.getBoundingClientRect().
+	// img находится внутри .screenshot-zoom-pan с CSS transform (scale/translate),
+	// поэтому getBoundingClientRect() на img возвращает ТРАНСФОРМИРОВАННЫЕ размеры.
+	// .action-area позиционируется в % относительно .screenshot-zoom-pan,
+	// который position:absolute inset:0 в .screenshot-aspect.
+	// Значит, правильная база = CSS-размер .screenshot-aspect (без transform).
+	const bw = aspectEl.clientWidth;
+	const bh = aspectEl.clientHeight;
 	if (bw <= 0 || bh <= 0) {
 		imageContentFracs.value = null;
 		return;
@@ -450,20 +471,32 @@ const overlayDisplayValue = computed(() => {
 	return String(hintMaskValue.value ?? "");
 });
 
-/** Размер шрифта в поле поверх скрина — от высоты области в логических пикселях */
+/** Размер шрифта и высота поля поверх скрина */
 const overlayInputStyle = computed(() => {
 	const a = area.value;
 	const step = props.selectedStep;
 	const dims = step?.photo_dimensions;
 	if (!a || !dims?.height) {
-		return { fontSize: "14px", lineHeight: 1.25 };
+		const defFs = 14;
+		return { fontSize: `${defFs}px`, lineHeight: 1.25, height: `${defFs * 1.25}px` };
 	}
-	const lh = Number(a.height) || 24;
-	const scale = Math.max(0.7, Math.min(1.6, Number(a.metaTextScale) || 1));
-	const fs = Math.round(Math.max(11, Math.min(38, lh * 0.38 * scale)));
+	// Если задан явный metaFontSize из редактора — используем его
+	const explicitFs = Number(a.metaFontSize);
+	let fs;
+	if (Number.isFinite(explicitFs) && explicitFs >= 8) {
+		fs = Math.round(explicitFs);
+	} else {
+		const lh = Number(a.height) || 24;
+		const scale = Math.max(0.7, Math.min(1.6, Number(a.metaTextScale) || 1));
+		fs = Math.round(Math.max(11, Math.min(38, lh * 0.38 * scale)));
+	}
+	// Явная высота = одна строка. Так textarea не будет растягиваться до двух строки по дефолту браузера,
+	// и align-items: center в родителе .overlay-input-wrap отцентрирует её по вертикали в области.
+	const lineHeight = 1.25;
 	return {
 		fontSize: `${fs}px`,
-		lineHeight: 1.2,
+		lineHeight,
+		height: `${Math.ceil(fs * lineHeight)}px`,
 	};
 });
 
@@ -596,6 +629,11 @@ function isPointInArea(px, py) {
 async function emitActionComplete() {
 	if (outcomeBusy.value) return;
 	outcomeBusy.value = true;
+	
+	// Визуальный фидбек: правильное действие
+	showCorrectFeedback.value = true;
+	setTimeout(() => { showCorrectFeedback.value = false; }, 600);
+
 	try {
 		const afterUrl = stepAfterImageUrl(props.selectedStep);
 		if (!isPassageMode.value || !afterUrl) {
@@ -762,14 +800,25 @@ function normalizeTextForValidation(raw) {
 function tryCompleteInputIfMatch() {
 	if (passageInteractionLocked.value) return;
 	if (!isInputTextType(actionType.value)) return;
-	const expected = normalizeTextForValidation(area.value?.metaText);
-	if (!expected) return;
+	const matchMode = area.value?.metaMatchMode;
 	const actual = normalizeTextForValidation(inputValue.value);
-	if (actual === expected) {
-		inputValue.value = "";
-		void emitActionComplete();
+	if (!actual) return;
+
+	// Для паттернов мы НЕ делаем автозавершение при вводе, 
+	// потому что регулярка может стать валидной на середине набора (например t@m.co для почты).
+	// Проверка паттернов происходит по нажатию Enter в onOverlayKeydown.
+	if (matchMode !== 'regex') {
+		// Точное сравнение (exact)
+		const expected = normalizeTextForValidation(area.value?.metaText);
+		if (!expected) return;
+		if (actual === expected) {
+			inputValue.value = "";
+			void emitActionComplete();
+		}
 	}
 }
+
+const isInputError = ref(false);
 
 function cancelHintTypewriter() {
 	if (hintTypewriterTimer != null) {
@@ -822,10 +871,52 @@ function runHintTypewriter(full) {
 	hintTypewriterTimer = setTimeout(tick, 140);
 }
 
-function onOverlayKeydown() {
+function triggerInputError() {
+	isInputError.value = true;
+	setTimeout(() => { isInputError.value = false; }, 600);
+}
+
+function onOverlayKeydown(e) {
+	if (passageInteractionLocked.value) { e.preventDefault(); return; }
 	if (!isInputTextType(actionType.value)) return;
 	if (!inputFromTypewriter && (hintTypewriterTimer != null || isHintTyping.value)) {
 		clearHintOverlay();
+	}
+
+	if (e.key === "Enter" && !e.shiftKey) {
+		e.preventDefault();
+		const matchMode = area.value?.metaMatchMode;
+		const actual = normalizeTextForValidation(inputValue.value);
+		if (!actual) return;
+
+		if (matchMode === 'regex') {
+			const pattern = area.value?.metaPattern;
+			if (!pattern) {
+				inputValue.value = "";
+				void emitActionComplete();
+				return;
+			}
+			try {
+				const rx = new RegExp(pattern);
+				if (rx.test(actual)) {
+					inputValue.value = "";
+					void emitActionComplete();
+				} else {
+					triggerInputError();
+				}
+			} catch {
+				inputValue.value = "";
+				void emitActionComplete();
+			}
+		} else {
+			const expected = normalizeTextForValidation(area.value?.metaText);
+			if (expected && actual === expected) {
+				inputValue.value = "";
+				void emitActionComplete();
+			} else {
+				triggerInputError();
+			}
+		}
 	}
 }
 
@@ -861,9 +952,23 @@ function onOverlayBlur(e) {
 
 function checkInputText() {
 	if (passageInteractionLocked.value) return;
-	const expected = normalizeTextForValidation(area.value?.metaText);
 	const actual = normalizeTextForValidation(inputValue.value);
-	if (actual === expected) {
+	const matchMode = area.value?.metaMatchMode;
+	let matched = false;
+
+	if (matchMode === 'regex') {
+		const pattern = area.value?.metaPattern;
+		if (pattern) {
+			try {
+				matched = new RegExp(pattern).test(actual);
+			} catch { matched = false; }
+		}
+	} else {
+		const expected = normalizeTextForValidation(area.value?.metaText);
+		matched = !!expected && actual === expected;
+	}
+
+	if (matched) {
 		inputValue.value = "";
 		void emitActionComplete();
 	} else {
@@ -953,7 +1058,8 @@ watch(
 		pan.value = { x: 0, y: 0 };
 		imageContentFracs.value = null;
 		showViewportHint.value = true;
-		nextTick(() => {
+		// Небольшая задержка, чтобы анимация перехода (transition) не мешала расчёту размеров (getBoundingClientRect)
+		setTimeout(() => {
 			updateImageContentLayout();
 			if (isInputTextType(actionType.value)) {
 				autoZoomToActionArea();
@@ -961,7 +1067,7 @@ watch(
 			if (isPassageMode.value && isInputTextType(actionType.value)) {
 				overlayInputRef.value?.focus?.();
 			}
-		});
+		}, 150);
 	},
 	{ immediate: true }
 );
@@ -971,7 +1077,7 @@ watch(
 	([hint]) => {
 		if (!isPassageMode.value) return;
 		if (hint) {
-			nextTick(() => autoZoomToActionArea());
+			setTimeout(() => autoZoomToActionArea(), 150);
 		}
 	},
 	{ flush: "post" }
@@ -993,7 +1099,7 @@ watch(
 	}
 );
 
-watch([zoom, pan], () => nextTick(() => updateImageContentLayout()), { deep: true });
+
 
 const imgResizeObserver =
 	typeof ResizeObserver !== "undefined"
@@ -1036,7 +1142,7 @@ onUnmounted(() => {
 	display: flex;
 	align-items: stretch;
 	justify-content: stretch;
-	background: #f0f1f5;
+	background: transparent !important;
 }
 
 .flow-inner {
@@ -1053,7 +1159,7 @@ onUnmounted(() => {
 	position: relative;
 	flex: 1;
 	min-height: 0;
-	background-color: #f0f1f5;
+	background: transparent !important;
 	overflow: hidden;
 	display: flex;
 	align-items: center;
@@ -1196,7 +1302,7 @@ onUnmounted(() => {
 	position: absolute;
 	inset: 0;
 	display: flex;
-	align-items: stretch;
+	align-items: center;
 	justify-content: stretch;
 	padding: 0 2px;
 	box-sizing: border-box;
@@ -1205,7 +1311,8 @@ onUnmounted(() => {
 .overlay-input-stack {
 	position: relative;
 	flex: 1;
-	min-height: 0;
+	/* Не задаём height: 100% — пусть высота определяется контентом,
+	   тогда align-items: center в родителе отцентрирует по вертикали */
 	min-width: 0;
 	width: 100%;
 	z-index: 1;
@@ -1214,17 +1321,21 @@ onUnmounted(() => {
 
 .overlay-text-mirror {
 	position: absolute;
-	inset: 0;
-	display: block;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	display: flex;
+	align-items: center;
 	padding: 0 2px;
 	box-sizing: border-box;
-	overflow: auto hidden;
+	overflow: hidden;
+	white-space: nowrap;
 	pointer-events: none;
 	z-index: 0;
 	font-family: inherit;
 	font-weight: 500;
 	letter-spacing: 0.01em;
-	white-space: pre;
 	color: #f8fafc;
 	text-shadow:
 		0 0 1px rgba(0, 0, 0, 1),
@@ -1270,8 +1381,7 @@ onUnmounted(() => {
 	position: relative;
 	z-index: 1;
 	width: 100%;
-	height: 100%;
-	min-height: 0;
+	/* Высота задаётся через overlayInputStyle как 1 строка */
 	border: none;
 	border-radius: 0;
 	background: transparent !important;
@@ -1283,7 +1393,7 @@ onUnmounted(() => {
 	letter-spacing: inherit;
 	box-shadow: none;
 	resize: none;
-	overflow: auto;
+	overflow: hidden;
 	white-space: pre;
 }
 
@@ -1302,6 +1412,19 @@ onUnmounted(() => {
 .overlay-input:focus {
 	outline: none;
 	box-shadow: none;
+}
+
+.overlay-input--error {
+	animation: shake 0.4s ease-in-out;
+	caret-color: #f87171 !important;
+	color: #f87171 !important;
+	-webkit-text-fill-color: #f87171 !important;
+}
+
+@keyframes shake {
+	0%, 100% { transform: translateX(0); }
+	20%, 60% { transform: translateX(-4px); }
+	40%, 80% { transform: translateX(4px); }
 }
 
 /* Печать подсказки: курсор скрыт, мигающий маркер в зеркале */
@@ -1343,5 +1466,46 @@ onUnmounted(() => {
 
 .keypress-hint-pill .q-icon {
 	color: var(--q-primary);
+}
+
+/* Оверлеи обратной связи */
+.feedback-overlay {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	z-index: 100;
+	opacity: 0;
+	transition: opacity 0.2s ease;
+}
+
+.feedback-overlay--correct {
+	background: radial-gradient(circle, rgba(34, 197, 94, 0.2) 0%, transparent 70%);
+	box-shadow: inset 0 0 100px rgba(34, 197, 94, 0.15);
+	animation: feedback-pulse-green 0.6s ease-out;
+}
+
+.feedback-overlay--wrong {
+	background: radial-gradient(circle, rgba(239, 68, 68, 0.2) 0%, transparent 70%);
+	box-shadow: inset 0 0 100px rgba(239, 68, 68, 0.15);
+	animation: feedback-pulse-red 0.6s ease-out, feedback-shake 0.4s ease-in-out;
+}
+
+@keyframes feedback-pulse-green {
+	0% { opacity: 0; }
+	20% { opacity: 1; }
+	100% { opacity: 0; }
+}
+
+@keyframes feedback-pulse-red {
+	0% { opacity: 0; }
+	20% { opacity: 1; }
+	100% { opacity: 0; }
+}
+
+@keyframes feedback-shake {
+	0%, 100% { transform: translateX(0); }
+	25% { transform: translateX(-10px); }
+	50% { transform: translateX(10px); }
+	75% { transform: translateX(-5px); }
 }
 </style>

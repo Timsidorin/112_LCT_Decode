@@ -1,65 +1,18 @@
 <template>
-	<NodeResizer min-width="16" min-height="12" />
-	<NodeToolbar
-		:is-visible="node.data.toolbarVisible"
-		:position="Position.Right"
-		:offset="10"
-	>
-		<div class="node-toolbar-content">
-			<template v-if="saveMode">
-				<div
-					v-if="selectedMode === 'keyPress'"
-					class="hotkey-controls"
-				>
-					<q-btn
-						dense
-						no-caps
-						outline
-						size="sm"
-						color="primary"
-						icon="keyboard"
-						label="Хоткей"
-						@click="openHotkeyCapture"
-					/>
-					<span class="hotkey-label">{{ hotkeyLabel }}</span>
-				</div>
-				<div
-					v-if="isInputTextMode"
-					class="text-scale-controls"
-				>
-					<span class="text-scale-label">Текст</span>
-					<q-slider
-						v-model="metaTextScalePercent"
-						:min="70"
-						:max="160"
-						:step="5"
-						dense
-						label
-						label-always
-						color="primary"
-						class="text-scale-slider"
-					/>
-				</div>
-				<q-btn
-					dense
-					no-caps
-					unelevated
-					color="primary"
-					icon="save"
-					label="Сохранить"
-					@click="sendRequest"
-				>
-					<q-tooltip>Сохранить область</q-tooltip>
-				</q-btn>
-			</template>
-		</div>
-	</NodeToolbar>
-	<Handle type="target" :position="Position.Left" />
-	<Handle type="source" :position="Position.Right" />
-	<template v-if="selectedMode === 'inputText'">
+	<NodeResizer min-width="15" min-height="15" @resize-end="onResizeEnd" />
+
+	<template v-if="isInputTextMode">
 		<input-text
 			v-model="metaText"
-			:scale="metaTextScale"
+			:font-size-px="metaFontSize"
+			:match-mode="metaMatchMode"
+			:pattern="metaPattern"
+			:pattern-preset="metaPatternPreset"
+			@update:font-size-px="onFontSizeChange"
+			@update:match-mode="onMatchModeChange"
+			@update:pattern="onPatternChange"
+			@update:pattern-preset="onPatternPresetChange"
+			@save="saveAll"
 		/>
 	</template>
 	<template v-if="selectedMode === 'keyPress'">
@@ -71,16 +24,16 @@
 </template>
 
 <script setup>
-import { Handle, Position } from '@vue-flow/core';
 import { NodeResizer } from '@vue-flow/node-resizer';
-import { NodeToolbar } from '@vue-flow/node-toolbar';
-import { computed, inject, nextTick, ref, watch } from "vue";
+import { computed, inject, ref, watch, nextTick } from "vue";
 import { useQuasar } from "quasar";
 import { trainingStepApi } from "@api";
 import { useTrainingData } from "@store/editTraining.js";
-import { eventRequiresAreaCoordinates, isKeyPressType } from "@utils/actionTypes.js";
+import { eventRequiresAreaCoordinates } from "@utils/actionTypes.js";
 import InputText from "@components/features/edit_page/InputText.vue";
 import WatchKey from "@components/features/edit_page/WatchKey.vue";
+
+const DEFAULT_FONT_SIZE = 16;
 
 const props = defineProps(['node']);
 const $q = useQuasar();
@@ -88,243 +41,187 @@ const store = useTrainingData();
 const getAreaForSave = inject("getAreaForSave", () => null);
 const isHotkeyDialogOpen = ref(false);
 
+// ── metaText ──────────────────────────────────────────────────────────────
 const metaText = computed({
-	get() {
-		return store.selectedStep.area?.metaText || '';
-	},
+	get() { return store.selectedStep?.area?.metaText || ''; },
 	set(value) {
-		if (!store.selectedStep.area) {
-			store.selectedStep.area = {
-				metaText: '',
-			};
-		}
+		ensureArea();
 		store.selectedStep.area.metaText = value;
-	}
+	},
 });
 
+// ── metaFontSize (прямые пиксели, 10–72) ──────────────────────────────────
+const metaFontSize = computed({
+	get() {
+		const raw = Number(store.selectedStep?.area?.metaFontSize);
+		if (Number.isFinite(raw) && raw >= 8) return Math.round(raw);
+		// Обратная совместимость: если есть старый metaTextScale — конвертируем
+		const oldScale = Number(store.selectedStep?.area?.metaTextScale);
+		if (Number.isFinite(oldScale) && oldScale > 0) return Math.round(14 * oldScale);
+		return DEFAULT_FONT_SIZE;
+	},
+	set(value) {
+		ensureArea();
+		store.selectedStep.area.metaFontSize = Math.max(8, Math.min(72, Math.round(value)));
+	},
+});
+
+// ── metaKeywords ───────────────────────────────────────────────────────────
 const metaKeywords = computed({
-	get() {
-		return store.selectedStep.area?.metaKeywords || [];
-	},
+	get() { return store.selectedStep?.area?.metaKeywords || []; },
 	set(value) {
-		if (!store.selectedStep.area) {
-			store.selectedStep.area = {
-				metaKeywords: []
-			};
-		}
+		ensureArea();
 		store.selectedStep.area.metaKeywords = value;
-	}
-});
-
-const metaTextScale = computed({
-	get() {
-		const raw = Number(store.selectedStep?.area?.metaTextScale);
-		if (!Number.isFinite(raw) || raw <= 0) return 1;
-		return Math.max(0.7, Math.min(1.6, raw));
-	},
-	set(value) {
-		if (!store.selectedStep.area) {
-			store.selectedStep.area = {};
-		}
-		const normalized = Math.max(0.7, Math.min(1.6, Number(value) || 1));
-		store.selectedStep.area.metaTextScale = Number(normalized.toFixed(2));
 	},
 });
 
-const metaTextScalePercent = computed({
-	get() {
-		return Math.round(metaTextScale.value * 100);
-	},
-	set(percent) {
-		metaTextScale.value = (Number(percent) || 100) / 100;
-	},
+// ── metaMatchMode ('exact' | 'regex') ─────────────────────────────────────
+const metaMatchMode = computed({
+	get() { return store.selectedStep?.area?.metaMatchMode || 'exact'; },
+	set(v) { ensureArea(); store.selectedStep.area.metaMatchMode = v; },
 });
 
-const saveMode = ref(true);
+// ── metaPattern (regex string) ────────────────────────────────────────────
+const metaPattern = computed({
+	get() { return store.selectedStep?.area?.metaPattern || ''; },
+	set(v) { ensureArea(); store.selectedStep.area.metaPattern = v; },
+});
+
+// ── metaPatternPreset ('any'|'email'|'phone'|'number'|'date'|'custom') ────
+const metaPatternPreset = computed({
+	get() { return store.selectedStep?.area?.metaPatternPreset || 'any'; },
+	set(v) { ensureArea(); store.selectedStep.area.metaPatternPreset = v; },
+});
 
 const selectedMode = computed(() => props.node?.data?.type);
-const isKeyPressMode = computed(() => isKeyPressType({ type: selectedMode.value }));
 const isInputTextMode = computed(() => selectedMode.value === "inputText");
 
-const hotkeyLabel = computed(() => {
-	return metaKeywords.value?.join('+') || 'не назначен';
-});
-
-const openHotkeyCapture = () => {
-	isHotkeyDialogOpen.value = true;
-};
-
-function getNodeSizePx(node) {
-	const d = node?.dimensions || {};
-	const s = node?.style || {};
-	const w = Number(d.width || parseInt(s.width, 10) || 0);
-	const h = Number(d.height || parseInt(s.height, 10) || 0);
-	return { width: w, height: h };
+function ensureArea() {
+	if (!store.selectedStep.area) store.selectedStep.area = {};
 }
 
-/** При вводе текста мягко расширяем область, чтобы код/строки помещались */
-function autoExpandInputArea(textValue) {
-	if (!isInputTextMode.value || !props.node) return;
-	const txt = String(textValue ?? "");
-	if (!txt) return;
+// ── Font size change ──────────────────────────────────────────────────────
+let saveTimer = null;
 
-	const lines = txt.split("\n");
-	const lineCount = lines.length;
-	const maxLineLen = lines.reduce((m, l) => Math.max(m, l.length), 0);
+function onFontSizeChange(px) {
+	metaFontSize.value = px;
+	clearTimeout(saveTimer);
+	saveTimer = setTimeout(() => saveAll(), 600);
+}
 
-	const { width: curW, height: curH } = getNodeSizePx(props.node);
-	const minW = Math.max(140, curW || 0);
-	const minH = Math.max(40, curH || 0);
+function onMatchModeChange(mode) {
+	metaMatchMode.value = mode;
+}
 
-	// Эвристика под моноширинный текст в InputText.vue
-	const scale = metaTextScale.value || 1;
-	const wantedW = maxLineLen * 8 * scale + 28;
-	const wantedH = lineCount * 22 * scale + 12;
+function onPatternChange(pattern) {
+	metaPattern.value = pattern;
+}
+
+function onPatternPresetChange(preset) {
+	metaPatternPreset.value = preset;
+}
+
+// ── Авто-расширение ноды под длинный текст ─────────────────────────────────
+watch(() => metaText.value, (v) => {
+	nextTick(() => autoExpand(v));
+});
+
+function autoExpand(txt) {
+	if (!isInputTextMode.value || !props.node || !txt) return;
+	const lines = String(txt).split("\n");
+	const charW = metaFontSize.value * 0.6;
+	const lineH = metaFontSize.value * 1.5;
+	const maxLen = lines.reduce((m, l) => Math.max(m, l.length), 0);
+
+	const wantedW = Math.max(30, maxLen * charW + 8);
+	const wantedH = Math.max(20, lines.length * lineH + 4);
 
 	const imgW = Number(store.selectedStep?.photo_dimensions?.width || 0);
 	const imgH = Number(store.selectedStep?.photo_dimensions?.height || 0);
-	const maxW = imgW > 0 ? Math.floor(imgW * 0.9) : 900;
-	const maxH = imgH > 0 ? Math.floor(imgH * 0.9) : 700;
+	const maxW = imgW > 0 ? Math.floor(imgW * 0.95) : 1200;
+	const maxH = imgH > 0 ? Math.floor(imgH * 0.95) : 900;
 
-	const newW = Math.max(minW, Math.min(maxW, wantedW));
-	const newH = Math.max(minH, Math.min(maxH, wantedH));
+	const curW = Number(props.node.dimensions?.width || 0);
+	const curH = Number(props.node.dimensions?.height || 0);
+	const newW = Math.max(curW, Math.min(maxW, wantedW));
+	const newH = Math.max(curH, Math.min(maxH, wantedH));
 
 	if (newW === curW && newH === curH) return;
 
 	// eslint-disable-next-line vue/no-mutating-props
-	props.node.dimensions = {
-		...(props.node.dimensions || {}),
-		width: newW,
-		height: newH,
-	};
+	props.node.dimensions = { ...(props.node.dimensions || {}), width: newW, height: newH };
 	// eslint-disable-next-line vue/no-mutating-props
-	props.node.style = {
-		...(props.node.style || {}),
-		width: `${newW}px`,
-		height: `${newH}px`,
-	};
+	props.node.style = { ...(props.node.style || {}), width: `${newW}px`, height: `${newH}px` };
+}
 
-	// Поддерживаем согласованность area в сторе для сохранения.
-	if (store.selectedStep?.area) {
-		store.selectedStep.area.width = Math.max(
-			Number(store.selectedStep.area.width || 0),
-			newW
-		);
-		store.selectedStep.area.height = Math.max(
-			Number(store.selectedStep.area.height || 0),
-			newH
-		);
+// ── Сохранение ────────────────────────────────────────────────────────────
+async function saveAll() {
+	const eventType = store.selectedEvent;
+	if (!eventType || !store.trainingData?.uuid || !store.selectedStep?.id) return;
+	const area = getAreaForSave?.() ?? {};
+	try {
+		await trainingStepApi.editStep(store.trainingData.uuid, store.selectedStep.id, {
+			action_type_id: eventType.id,
+			area: {
+				...area,
+				metaText: metaText.value,
+				metaKeywords: metaKeywords.value,
+				metaFontSize: metaFontSize.value,
+				metaMatchMode: metaMatchMode.value,
+				metaPattern: metaPattern.value,
+				metaPatternPreset: metaPatternPreset.value,
+			}
+		});
+		ensureArea();
+		Object.assign(store.selectedStep.area, {
+			...area,
+			metaText: metaText.value,
+			metaKeywords: metaKeywords.value,
+			metaFontSize: metaFontSize.value,
+			metaMatchMode: metaMatchMode.value,
+			metaPattern: metaPattern.value,
+			metaPatternPreset: metaPatternPreset.value,
+		});
+	} catch {
+		// тихо игнорируем
 	}
 }
 
-watch(
-	() => metaText.value,
-	(v) => {
-		nextTick(() => autoExpandInputArea(v));
-	}
-);
-
-const sendRequest = async () => {
+/** Автосохранение после ресайза */
+async function onResizeEnd() {
+	const eventType = store.selectedEvent;
+	if (!eventType || !eventRequiresAreaCoordinates(eventType)) return;
+	if (!store.trainingData?.uuid || !store.selectedStep?.id) return;
+	const area = getAreaForSave?.();
+	if (!area || !area.width || !area.height) return;
 	try {
-		await nextTick();
-		const eventType = store.selectedEvent;
-		if (isKeyPressMode.value && eventType) {
-			await trainingStepApi.editStep(
-				store.trainingData.uuid,
-				store.selectedStep.id,
-				{
-					action_type_id: eventType.id,
-					area: { metaKeywords: metaKeywords.value || [] }
-				}
-			);
-			if (!store.selectedStep.area) store.selectedStep.area = {};
-			store.selectedStep.area.metaKeywords = metaKeywords.value || [];
-			$q.notify({ color: "positive", message: "Клавиша сохранена", position: "bottom-right" });
-			return;
-		}
-		const area = getAreaForSave?.();
-		if (eventRequiresAreaCoordinates(store.selectedEvent) && (!area || !area.width || !area.height)) {
-			$q.notify({ color: "negative", message: "Не удалось определить область", position: "top" });
-			return;
-		}
-
-		await trainingStepApi.editStep(
-			store.trainingData.uuid,
-			store.selectedStep.id,
-			{
-				action_type_id: store.selectedEvent.id,
-				area: {
-					...area,
-					metaText: metaText.value,
-					metaKeywords: metaKeywords.value,
-					metaTextScale: metaTextScale.value,
-				}
+		await trainingStepApi.editStep(store.trainingData.uuid, store.selectedStep.id, {
+			action_type_id: eventType.id,
+			area: {
+				...area,
+				metaText: metaText.value,
+				metaKeywords: metaKeywords.value,
+				metaFontSize: metaFontSize.value,
+				metaMatchMode: metaMatchMode.value,
+				metaPattern: metaPattern.value,
+				metaPatternPreset: metaPatternPreset.value,
 			}
-		);
-		if (!store.selectedStep.area) store.selectedStep.area = {};
+		});
+		ensureArea();
 		Object.assign(store.selectedStep.area, area, {
 			metaText: metaText.value,
-			metaKeywords: metaKeywords.value,
-			metaTextScale: metaTextScale.value,
+			metaFontSize: metaFontSize.value,
+			metaMatchMode: metaMatchMode.value,
+			metaPattern: metaPattern.value,
+			metaPatternPreset: metaPatternPreset.value,
 		});
-		$q.notify({
-			color: "positive",
-			message: "Область сохранена",
-			position: "bottom-right",
-		});
+		$q.notify({ color: 'positive', message: 'Размер сохранён', position: 'bottom-right', icon: 'check_circle', timeout: 1000 });
 	} catch {
-		$q.notify({
-			color: "negative",
-			message: "Не удалось сохранить",
-			position: "top",
-		});
+		// тихо игнорируем
 	}
-};
+}
 </script>
 
 <style>
 @import "@vue-flow/node-resizer/dist/style.css";
-
-.node-toolbar-content {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	background: rgba(255, 255, 255, 0.92);
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
-	padding: 6px 10px;
-	border-radius: 10px;
-	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
-	border: 1px solid rgba(255, 255, 255, 0.6);
-}
-
-.hotkey-controls {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
-
-.hotkey-label {
-	font-size: 12px;
-	font-weight: 500;
-	color: #6b7280;
-}
-
-.text-scale-controls {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	min-width: 180px;
-}
-
-.text-scale-label {
-	font-size: 12px;
-	font-weight: 600;
-	color: #475569;
-	white-space: nowrap;
-}
-
-.text-scale-slider {
-	width: 130px;
-}
 </style>

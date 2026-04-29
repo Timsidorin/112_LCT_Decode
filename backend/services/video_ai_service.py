@@ -635,3 +635,57 @@ class VideoAIService:
 
         cap.release()
         return results
+
+    async def rewrite_task_text(self, text: str) -> str:
+        prompt = (
+            "Улучши следующий текст описания/инструкции шага для интерактивного тренинга. "
+            "Сделай его понятным и кратким, исправь опечатки и используй уместную Markdown-разметку. "
+            "Можешь добавить немного эмодзи для живости. "
+            "Верни ТОЛЬКО улучшенный текст без вступительных фраз вроде 'Конечно, вот улучшенный текст:' и без markdown-блока ```markdown.\n\n"
+            f"Исходный текст:\n{text}"
+        )
+        
+        completion = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=2000,
+            temperature=0.7,
+        )
+        
+        result = completion.choices[0].message.content.strip()
+        if result.startswith("```md"):
+            result = result[5:]
+        elif result.startswith("```markdown"):
+            result = result[11:]
+        if result.startswith("```"):
+            result = result[3:]
+        if result.endswith("```"):
+            result = result[:-3]
+            
+        return result.strip()
+
+    def stream_rewrite_task_text(self, text: str):
+        prompt = (
+            "Улучши следующий текст описания/инструкции шага для интерактивного тренинга. "
+            "Сделай его понятным и кратким, исправь опечатки и используй уместную Markdown-разметку. "
+            "Можешь добавить немного эмодзи для живости. "
+            "Верни ТОЛЬКО улучшенный текст без вступительных фраз вроде 'Конечно, вот улучшенный текст:' и без markdown-блока ```markdown.\n\n"
+            f"Исходный текст:\n{text}"
+        )
+        
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=2000,
+            temperature=0.7,
+            stream=True,
+        )
+        
+        for chunk in response:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta

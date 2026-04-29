@@ -1,6 +1,6 @@
 <template>
 	<div v-if="editor" class="rich-task-editor">
-		<div class="rich-task-editor__toolbar">
+		<div class="rich-task-editor__toolbar glass-pill">
 			<q-btn-toggle
 				:model-value="headingLevel"
 				flat
@@ -309,101 +309,70 @@ onBeforeUnmount(() => {
 
 <style>
 .rich-task-editor {
-	border: 1px solid rgba(15, 23, 42, 0.12);
-	border-radius: 12px;
-	overflow: hidden;
-	background: #fff;
+	display: flex;
+	flex-direction: column;
+	border: none;
+	background: transparent;
+	overflow: visible; /* To allow floating toolbar */
 }
 
 .rich-task-editor__toolbar {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 2px;
-	padding: 8px 10px;
-	border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-	background: #f8fafc;
+	gap: 6px;
+	padding: 8px 18px;
+	margin-bottom: 20px;
+	position: sticky;
+	top: 0;
+	z-index: 10;
+	width: fit-content;
 }
 
 .rich-task-editor__content {
-	max-height: min(48vh, 420px);
-	min-height: 220px;
-	overflow-y: auto;
-	padding: 16px 18px;
+	flex: 1;
+	background: rgba(255, 255, 255, 0.5);
+	backdrop-filter: blur(8px);
+	border: 1px solid rgba(15, 23, 42, 0.08);
+	border-radius: 16px;
+	padding: 20px 24px;
+	transition: all 0.3s ease;
+	min-height: 280px;
+}
+
+.rich-task-editor__content:focus-within {
+	background: rgba(255, 255, 255, 0.7);
+	border-color: rgba(99, 102, 241, 0.3);
+	box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.05);
 }
 
 .rich-task-editor-prose {
 	outline: none;
-	min-height: 180px;
-	font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+	font-family: "Inter", system-ui, -apple-system, sans-serif;
 	font-size: 18px;
-	line-height: 1.65;
-	font-weight: 400;
-	color: #0f172a;
-	letter-spacing: 0.01em;
-}
-
-.rich-task-editor-prose p {
-	margin: 0 0 0.7em;
+	line-height: 1.7;
+	color: #1e293b;
+	letter-spacing: -0.01em;
 }
 
 .rich-task-editor-prose h2 {
-	font-size: 1.35em;
-	font-weight: 700;
-	margin: 0.65em 0 0.4em;
-	letter-spacing: -0.02em;
-}
-
-.rich-task-editor-prose h3 {
-	font-size: 1.2em;
-	font-weight: 700;
-	margin: 0.55em 0 0.35em;
-	letter-spacing: -0.015em;
-}
-
-.rich-task-editor-prose ul,
-.rich-task-editor-prose ol {
-	padding-left: 1.35em;
-	margin: 0.4em 0 0.65em;
-}
-
-.rich-task-editor-prose li {
-	margin: 0.2em 0;
-}
-
-.rich-task-editor-prose ul[data-type="taskList"] {
-	list-style: none;
-	padding-left: 0;
-}
-
-.rich-task-editor-prose ul[data-type="taskList"] li {
-	display: flex;
-	align-items: flex-start;
-	gap: 8px;
+	font-size: 1.5em;
+	font-weight: 800;
+	margin: 1.2em 0 0.5em;
+	color: #0f172a;
 }
 
 .rich-task-editor-prose pre {
 	background: #0f172a;
-	color: #e2e8f0;
-	padding: 12px 14px;
-	border-radius: 8px;
-	font-size: 14px;
-	line-height: 1.5;
-	overflow-x: auto;
-}
-
-.rich-task-editor-prose code {
-	background: rgba(15, 23, 42, 0.06);
-	padding: 0.12em 0.4em;
-	border-radius: 4px;
-	font-size: 0.88em;
+	color: #f8fafc;
+	padding: 16px;
+	border-radius: 12px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .rich-task-editor-prose .ProseMirror p.is-editor-empty:first-child::before {
 	color: #94a3b8;
-	content: attr(data-placeholder);
-	float: left;
-	height: 0;
-	pointer-events: none;
+	font-style: italic;
+	font-weight: 400;
 }
 </style>

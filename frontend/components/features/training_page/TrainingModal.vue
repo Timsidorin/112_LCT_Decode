@@ -4,7 +4,7 @@
 			<q-card-section class="modal-header row items-center">
 				<div class="modal-header-content">
 					<q-icon name="school" size="28px" color="primary" class="q-mr-sm" />
-					<span class="text-h6">Создание тренинга</span>
+					<span class="text-h6">{{ mode === 'edit' ? 'Настройки тренинга' : 'Создание тренинга' }}</span>
 				</div>
 				<q-space />
 				<q-btn flat round dense icon="close" v-close-popup :disable="loading" />
@@ -15,176 +15,180 @@
 					<q-spinner-dots size="40px" color="primary" />
 				</div>
 
-				<!-- Основное -->
-				<div class="form-section form-section--spaced">
-					<div class="form-section-label">
-						<q-icon name="edit_note" size="18px" />
-						<span>Основное</span>
-					</div>
-				<q-input
-					v-model="dataTraining.title"
-					outlined
-					dense
-					rounded
-					label="Название"
-					placeholder="Введите название тренинга"
-					color="primary"
-					:rules="[(v) => !!v?.trim() || 'Обязательное поле']"
-					lazy-rules
-					class="form-field"
-					autofocus
-				/>
-				<q-input
-					v-model="dataTraining.description"
-					outlined
-					dense
-					rounded
-					label="Описание"
-					placeholder="Кратко опишите содержание тренинга"
-					type="textarea"
-					rows="3"
-					color="primary"
-					autogrow
-					class="form-field form-field--textarea"
-				/>
-				</div>
-
-				<q-separator class="modal-separator" />
-
-				<!-- Дополнительно -->
-				<div class="form-section form-section--spaced">
-					<div class="form-section-label">
-						<q-icon name="label" size="18px" />
-						<span>Дополнительно</span>
-					</div>
-				<q-select
-					ref="tagSelectRef"
-					v-model="dataTraining.tag_ids"
-					outlined
-					dense
-					rounded
-					multiple
-					options-dense
-					emit-value
-					map-options
-					option-value="value"
-					option-label="label"
-					:options="tagSelectOptions"
-					use-chips
-					max-values="3"
-					use-input
-					@filter="filterTags"
-					@input-value="onInputValue"
-					@popup-show="onPopupShow"
-					new-value-mode="add-unique"
-					@new-value="onNewValue"
-					input-debounce="0"
-					label="Теги"
-					placeholder="Введите для поиска или нажмите Enter для создания тега"
-					color="primary"
-					class="form-field tags-select"
-					behavior="menu"
-					menu-shrink
-					menu-anchor="bottom left"
-					menu-self="top left"
-					:menu-offset="[0, 8]"
-				>
-					<template v-slot:no-option>
-						<q-item
-							v-if="currentInputValue.trim()"
-							clickable
-							class="tags-create-item"
-							@click.prevent.stop="createNewTagFromInput"
-						>
-							<q-item-section avatar>
-								<q-icon name="add_circle_outline" color="primary" />
-							</q-item-section>
-							<q-item-section>
-								<q-item-label>Создать тег «<strong>{{ currentInputValue.trim() }}</strong>»</q-item-label>
-							</q-item-section>
-						</q-item>
-						<q-item v-else>
-							<q-item-section class="text-grey-7 text-center">
-								<span>Введите название и нажмите Enter или выберите «Создать тег»</span>
-							</q-item-section>
-						</q-item>
-					</template>
-				</q-select>
-					<div class="row q-col-gutter-md">
-						<div class="col-6">
-						<q-input
-							v-model.number="dataTraining.duration_minutes"
-							outlined
-							dense
-							rounded
-							type="number"
-							min="0"
-							label="Продолжительность (мин)"
-							placeholder="0"
-							color="primary"
-							class="form-field"
-						/>
-					</div>
-					<div class="col-6">
-						<q-select
-							v-model="dataTraining.level_id"
-							outlined
-							dense
-							rounded
-							emit-value
-							map-options
-							option-value="value"
-							option-label="label"
-							:options="levelList"
-							label="Уровень подготовки"
-							placeholder="Выберите уровень"
-							color="primary"
-							behavior="menu"
-							class="form-field"
-						/>
+				<div class="row q-col-gutter-xl">
+					<!-- Левая колонка -->
+					<div class="col-12 col-md-6 column">
+						<!-- Основное -->
+						<div class="form-section form-section--spaced" style="flex: 1">
+							<div class="form-section-label">
+								<q-icon name="edit_note" size="18px" />
+								<span>Основное</span>
+							</div>
+							<q-input
+								v-model="dataTraining.title"
+								outlined
+								dense
+								rounded
+								label="Название"
+								placeholder="Введите название тренинга"
+								color="primary"
+								:rules="[(v) => !!v?.trim() || 'Обязательное поле']"
+								lazy-rules
+								class="form-field"
+								autofocus
+							/>
+							<q-input
+								v-model="dataTraining.description"
+								outlined
+								dense
+								rounded
+								label="Описание"
+								placeholder="Кратко опишите содержание тренинга"
+								type="textarea"
+								color="primary"
+								class="form-field form-field--textarea flex-grow-input"
+							/>
 						</div>
 					</div>
-				</div>
 
-				<q-separator class="modal-separator" />
+					<!-- Правая колонка -->
+					<div class="col-12 col-md-6 column">
+						<!-- Дополнительно -->
+						<div class="form-section form-section--spaced">
+							<div class="form-section-label">
+								<q-icon name="label" size="18px" />
+								<span>Дополнительно</span>
+							</div>
+							<q-select
+								ref="tagSelectRef"
+								v-model="dataTraining.tag_ids"
+								outlined
+								dense
+								rounded
+								multiple
+								options-dense
+								emit-value
+								map-options
+								option-value="value"
+								option-label="label"
+								:options="tagSelectOptions"
+								use-chips
+								max-values="3"
+								use-input
+								@filter="filterTags"
+								@input-value="onInputValue"
+								@popup-show="onPopupShow"
+								new-value-mode="add-unique"
+								@new-value="onNewValue"
+								input-debounce="0"
+								label="Теги"
+								placeholder="Введите для поиска или нажмите Enter"
+								color="primary"
+								class="form-field tags-select"
+								behavior="menu"
+								menu-shrink
+								menu-anchor="bottom left"
+								menu-self="top left"
+								:menu-offset="[0, 8]"
+							>
+								<template v-slot:no-option>
+									<q-item
+										v-if="currentInputValue.trim()"
+										clickable
+										class="tags-create-item"
+										@click.prevent.stop="createNewTagFromInput"
+									>
+										<q-item-section avatar>
+											<q-icon name="add_circle_outline" color="primary" />
+										</q-item-section>
+										<q-item-section>
+											<q-item-label>Создать тег «<strong>{{ currentInputValue.trim() }}</strong>»</q-item-label>
+										</q-item-section>
+									</q-item>
+									<q-item v-else>
+										<q-item-section class="text-grey-7 text-center">
+											<span>Введите название и нажмите Enter</span>
+										</q-item-section>
+									</q-item>
+								</template>
+							</q-select>
+							<div class="row q-col-gutter-sm">
+								<div class="col-6">
+									<q-input
+										v-model.number="dataTraining.duration_minutes"
+										outlined
+										dense
+										rounded
+										type="number"
+										min="0"
+										label="Минут на прохождение"
+										placeholder="0"
+										color="primary"
+										class="form-field"
+									/>
+								</div>
+								<div class="col-6">
+									<q-select
+										v-model="dataTraining.level_id"
+										outlined
+										dense
+										rounded
+										emit-value
+										map-options
+										option-value="value"
+										option-label="label"
+										:options="levelList"
+										label="Уровень подготовки"
+										placeholder="Выбрать"
+										color="primary"
+										behavior="menu"
+										class="form-field"
+									/>
+								</div>
+							</div>
+						</div>
 
-				<!-- Настройки -->
-				<div class="form-section">
-					<div class="form-section-label">
-						<q-icon name="tune" size="18px" />
-						<span>Настройки</span>
-					</div>
-					<div class="row items-center q-gutter-sm">
-						<q-toggle
-							v-model="dataTraining.skip_steps"
-							color="primary"
-							size="lg"
-						/>
-						<div>
-							<span class="text-body2 text-weight-medium">Пропуск шагов</span>
-							<p class="text-caption text-grey-7 q-ma-none">Прохождение в любом порядке</p>
+						<q-separator class="modal-separator q-my-lg" />
+
+						<!-- Настройки -->
+						<div class="form-section">
+							<div class="form-section-label">
+								<q-icon name="tune" size="18px" />
+								<span>Настройки</span>
+							</div>
+							<div class="row items-center q-gutter-sm">
+								<q-toggle
+									v-model="dataTraining.skip_steps"
+									color="primary"
+									size="lg"
+								/>
+								<div>
+									<span class="text-body2 text-weight-medium">Пропуск шагов</span>
+									<p class="text-caption text-grey-7 q-ma-none">Прохождение в любом порядке</p>
+								</div>
+								<q-icon name="help_outline" size="20px" color="grey-6" class="cursor-help q-ml-xs">
+									<q-tooltip anchor="top middle" :offset="[0, 8]">
+										Позволяет проходить шаги тренинга в произвольной последовательности
+									</q-tooltip>
+								</q-icon>
+							</div>
+							<div class="row items-center q-gutter-sm q-mt-sm">
+								<q-toggle
+									v-model="dataTraining.hints_enabled"
+									color="primary"
+									size="lg"
+								/>
+								<div>
+									<span class="text-body2 text-weight-medium">Включить подсказки</span>
+									<p class="text-caption text-grey-7 q-ma-none">Кнопка подсказок в прохождении</p>
+								</div>
+								<q-icon name="help_outline" size="20px" color="grey-6" class="cursor-help q-ml-xs">
+									<q-tooltip anchor="top middle" :offset="[0, 8]">
+										Если выключено, кнопка подсказок в прохождении будет скрыта
+									</q-tooltip>
+								</q-icon>
+							</div>
 						</div>
-						<q-icon name="help_outline" size="20px" color="grey-6" class="cursor-help">
-							<q-tooltip anchor="top middle" :offset="[0, 8]">
-								Позволяет проходить шаги тренинга в произвольной последовательности
-							</q-tooltip>
-						</q-icon>
-					</div>
-					<div class="row items-center q-gutter-sm q-mt-md">
-						<q-toggle
-							v-model="dataTraining.hints_enabled"
-							color="primary"
-							size="lg"
-						/>
-						<div>
-							<span class="text-body2 text-weight-medium">Включить подсказки</span>
-							<p class="text-caption text-grey-7 q-ma-none">Показывать кнопку подсказок в прохождении</p>
-						</div>
-						<q-icon name="help_outline" size="20px" color="grey-6" class="cursor-help">
-							<q-tooltip anchor="top middle" :offset="[0, 8]">
-								Если выключено, кнопка подсказок в прохождении будет скрыта
-							</q-tooltip>
-						</q-icon>
 					</div>
 				</div>
 			</q-card-section>
@@ -204,12 +208,12 @@
 					no-caps
 					rounded
 					color="primary"
-					icon="add"
-					label="Создать тренинг"
+					:icon="mode === 'edit' ? 'save' : 'add'"
+					:label="mode === 'edit' ? 'Сохранить изменения' : 'Создать тренинг'"
 					:loading="loading"
 					:disable="loading || !dataTraining.title?.trim()"
 					class="btn-create-training"
-					@click="createTraining"
+					@click="submitTraining"
 				/>
 			</q-card-actions>
 		</q-card>
@@ -222,6 +226,11 @@ import { useQuasar } from "quasar";
 import { TrainingApi } from "@api/api/TrainingApi.js";
 import { MetaTrainingApi } from "@api/api/MetaTrainingApi.js";
 import { trainingEvents } from "@utils/eventBus.js";
+
+const props = defineProps({
+	mode: { type: String, default: "create" },
+	editData: { type: Object, default: null }
+});
 
 const $q = useQuasar();
 const metaApi = new MetaTrainingApi();
@@ -388,7 +397,7 @@ function resetForm() {
 	currentInputValue.value = "";
 }
 
-async function createTraining() {
+async function submitTraining() {
 	if (!dataTraining.value.title?.trim()) return;
 	try {
 		loading.value = true;
@@ -396,21 +405,31 @@ async function createTraining() {
 			...dataTraining.value,
 			duration_minutes: dataTraining.value.duration_minutes ?? undefined
 		};
-		await trainingApi.createTraining(payload);
+		if (props.mode === "create") {
+			await trainingApi.createTraining(payload);
+			$q.notify({
+				color: "positive",
+				message: "Тренинг создан",
+				position: "bottom-right",
+				icon: "check_circle"
+			});
+		} else {
+			await trainingApi.updateTraining(props.editData.uuid, payload);
+			$q.notify({
+				color: "positive",
+				message: "Тренинг обновлён",
+				position: "bottom-right",
+				icon: "check_circle"
+			});
+		}
 		trainingEvents.created.trigger();
 		showModal.value = false;
 		resetForm();
-		$q.notify({
-			color: "positive",
-			message: "Тренинг создан",
-			position: "bottom-right",
-			icon: "check_circle"
-		});
 	} catch (e) {
 		console.error(e);
 		$q.notify({
 			color: "negative",
-			message: "Не удалось создать тренинг",
+			message: props.mode === "create" ? "Не удалось создать тренинг" : "Не удалось обновить тренинг",
 			position: "top",
 			icon: "error"
 		});
@@ -422,6 +441,17 @@ async function createTraining() {
 watch(showModal, async (val) => {
 	if (val) {
 		resetForm();
+		if (props.mode === "edit" && props.editData) {
+			dataTraining.value = {
+				title: props.editData.title || "",
+				description: props.editData.description || "",
+				tag_ids: props.editData.tags?.map((t) => t.value) || [],
+				duration_minutes: props.editData.duration_minutes || null,
+				level_id: props.editData.level?.value || null,
+				skip_steps: props.editData.skip_steps || false,
+				hints_enabled: props.editData.hints_enabled !== false,
+			};
+		}
 		metaLoading.value = true;
 		try {
 			const [tagsRes, levelsRes] = await Promise.all([
@@ -446,7 +476,7 @@ watch(showModal, async (val) => {
 
 <style scoped>
 .training-modal-card {
-	width: 520px;
+	width: 860px;
 	max-width: 95vw;
 	border-radius: 18px;
 	overflow: visible;
@@ -534,8 +564,14 @@ watch(showModal, async (val) => {
 	min-height: 90px;
 }
 
-.form-field--textarea :deep(.q-field__control) {
-	min-height: 90px;
+.flex-grow-input {
+	display: flex;
+	flex-direction: column;
+}
+
+.flex-grow-input :deep(.q-field__control) {
+	height: 100%;
+	min-height: 160px;
 }
 
 .tags-select {

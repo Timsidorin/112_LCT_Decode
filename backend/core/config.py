@@ -16,7 +16,7 @@ class Configs(BaseSettings):
 
     # ------------ Веб-сервер ------------
     HOST: str = "localhost"
-    PORT: int = 8002
+    PORT: int = 8003
 
     # ------------ Логирование ------------
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
@@ -89,6 +89,14 @@ class Configs(BaseSettings):
     # Сдвиг вперёд при извлечении кадра «после» (анимации/переходы UI успели завершиться).
     AI_VIDEO_AFTER_FRAME_LAG_SEC: float = Field(
         default=0.12, env="AI_VIDEO_AFTER_FRAME_LAG_SEC"
+    )
+
+    # ------------------- AI Voice (SaluteSpeech) ---------------------------
+    CLIENT_ID_SALUTESPEECH: str = Field(
+        default="", env="CLIENT_ID_SALUTESPEECH"
+    )
+    SALUT_SPEECH_AUTORIZATION: str = Field(
+        default="", env="SALUT_SPEECH_AUTORIZATION"
     )
 
     model_config = SettingsConfigDict(

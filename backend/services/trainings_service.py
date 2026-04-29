@@ -36,6 +36,7 @@ from schemas.trainings import (
 from services.BatchVideo_service import BatchVideoService
 from services.external_services.s3_service import S3Service
 from services.video_ai_service import VideoAIService
+from services.pdf_ai_service import PdfAiService
 
 # ID типа действия «Нажатие клавиши» — область хранит только metaKeywords
 ACTION_TYPE_KEY_PRESS_ID = 6
@@ -834,3 +835,117 @@ class TrainingsService:
             training_uuid, skip=skip, limit=min(limit, 100)
         )
         return [PassageHistoryItemResponse.model_validate(r) for r in rows]
+
+    async def add_steps_from_pdf(
+        self,
+        training_uuid: UUID4,
+        pdf_bytes: bytes,
+        pdf_ai_service: PdfAiService,
+        s3_service: S3Service,
+    ) -> List[Dict]:
+        """
+        Обрабатывает PDF-инструкцию через VLM-модель:
+        1. Каждая страница рендерится в PNG
+        2. VLM определяет кликабельную область по тексту страницы
+        3. PNG загружается в S3
+        4. Создаётся шаг тренинга с областью, описанием и скрином
+        """
+        try:
+            training_exists = await self.repo.check_training_exists(training_uuid)
+            if not training_exists:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Тренинг с UUID {training_uuid} не найден",
+                )
+
+            # Анализируем PDF через VLM
+            pdf_steps = await pdf_ai_service.analyze_pdf(pdf_bytes)
+
+            if not pdf_steps:
+                return []
+
+            DEFAULT_ACTION_TYPE_ID = 1
+
+            existing_steps = await self.repo.get_training_steps(training_uuid)
+            next_step_number = len(existing_steps) + 1
+
+            created_steps_info = []
+
+            for i, step_data in enumerate(pdf_steps):
+                # Загружаем PNG страницы в S3
+                filename = f"pdf_step_{step_data.page_number:03d}.png"
+                object_name = s3_service.generate_unique_filename(filename)
+                image_url = await s3_service.upload_file(
+                    step_data.page_bytes, object_name, training_uuid
+                )
+
+                bbox = step_data.bbox
+                # bbox уже нормализован 0..1 в PdfAiService
+                x1, y1, x2, y2 = bbox
+                x_min, x_max = min(x1, x2), max(x1, x2)
+                y_min, y_max = min(y1, y2), max(y1, y2)
+                area: Dict[str, Any] = {
+                    "x": x_min * step_data.page_width,
+                    "y": y_min * step_data.page_height,
+                    "width": max(1.0, (x_max - x_min) * step_data.page_width),
+                    "height": max(1.0, (y_max - y_min) * step_data.page_height),
+                }
+
+                action_key = (step_data.action_type_key or "left_click").lower()
+                action_type_id = ACTION_TYPE_KEY_TO_ID.get(
+                    action_key, DEFAULT_ACTION_TYPE_ID
+                )
+
+                if action_key == "text_input" and step_data.expected_text:
+                    area["metaText"] = step_data.expected_text
+                if action_key == "key_chord" and step_data.key_chord:
+                    area["metaKeywords"] = list(step_data.key_chord)
+
+                step_meta: Dict[str, Any] = {
+                    "name": step_data.step_title,
+                    "source": "pdf_ai",
+                    "pdf_page": step_data.page_number,
+                }
+
+                new_step = TrainingStep(
+                    step_number=next_step_number + i,
+                    meta=step_meta,
+                    training_uuid=training_uuid,
+                    image_url=image_url,
+                    photo_dimensions={
+                        "width": step_data.page_width,
+                        "height": step_data.page_height,
+                    },
+                    area=area,
+                    action_type_id=action_type_id,
+                    annotation=step_data.instruction_md,
+                )
+                self.session.add(new_step)
+
+                created_steps_info.append(
+                    {
+                        "step_number": next_step_number + i,
+                        "pdf_page": step_data.page_number,
+                        "image_url": image_url,
+                        "name": step_data.step_title,
+                        "area": area,
+                        "action_type_id": action_type_id,
+                        "action_type_key": action_key,
+                        "dimensions": {
+                            "width": step_data.page_width,
+                            "height": step_data.page_height,
+                        },
+                    }
+                )
+
+            await self.session.commit()
+            return created_steps_info
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            await self.session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Ошибка AI-анализа PDF и создания шагов: {str(e)}",
+            )

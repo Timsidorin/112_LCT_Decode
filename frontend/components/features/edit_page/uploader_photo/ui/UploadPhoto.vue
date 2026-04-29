@@ -8,18 +8,22 @@
 		<div class="upload-card column items-center">
 			<div class="upload-icon-wrap q-mb-lg">
 				<q-icon
-					:name="uploadMode === 'photos' ? 'add_photo_alternate' : 'videocam'"
+					:name="uploadMode === 'photos' ? 'add_photo_alternate' : uploadMode === 'video' ? 'videocam' : uploadMode === 'pdf' ? 'picture_as_pdf' : 'screenshot_monitor'"
 					size="48px"
 					color="primary"
 				/>
 			</div>
 			<h5 class="text-weight-bold text-grey-9 q-mb-xs q-mt-none">
-				{{ uploadMode === 'photos' ? 'Начните с добавления скриншотов' : 'Загрузите видео' }}
+				{{ uploadMode === 'photos' ? 'Начните с добавления скриншотов' : uploadMode === 'video' ? 'Загрузите видео' : uploadMode === 'pdf' ? 'Загрузите PDF инструкцию' : 'Захват экрана' }}
 			</h5>
 			<p class="text-body2 text-grey-6 text-center q-mb-lg" style="max-width: 420px">
 				{{ uploadMode === 'photos'
 					? 'Загрузите изображения интерфейса, чтобы создать шаги тренинга'
-					: 'AI автоматически создаст шаги с описаниями и определит области действий'
+					: uploadMode === 'video'
+					? 'AI автоматически создаст шаги с описаниями и определит области действий'
+					: uploadMode === 'pdf'
+					? 'AI разберет инструкцию, извлечет скрины и определит области для клика'
+					: 'Транслируйте нужный экран или окно и делайте снимки на лету'
 				}}
 			</p>
 
@@ -41,7 +45,25 @@
 				>
 					<q-icon name="smart_display" size="28px" />
 					<span class="mode-label">Видео</span>
-					<span class="mode-desc">AI-анализ кадров</span>
+					<span class="mode-desc">AI-анализ</span>
+				</div>
+				<div
+					class="mode-card"
+					:class="{ 'mode-card--active': uploadMode === 'pdf' }"
+					@click="uploadMode = 'pdf'"
+				>
+					<q-icon name="picture_as_pdf" size="28px" />
+					<span class="mode-label">PDF</span>
+					<span class="mode-desc">Из инструкции</span>
+				</div>
+				<div
+					class="mode-card"
+					:class="{ 'mode-card--active': uploadMode === 'capture' }"
+					@click="uploadMode = 'capture'"
+				>
+					<q-icon name="screenshot_monitor" size="28px" />
+					<span class="mode-label">Захват</span>
+					<span class="mode-desc">Live-снимки</span>
 				</div>
 			</div>
 
@@ -84,8 +106,45 @@
 				</template>
 			</template>
 
+			<!-- Режим захвата экрана -->
+			<template v-else-if="uploadMode === 'capture'">
+				<div v-if="!videoStream" class="capture-start-card" @click="startCapture">
+					<q-icon name="screen_share" size="64px" color="primary" class="q-mb-sm" />
+					<span class="text-body1 text-grey-8 text-weight-medium">Предоставить доступ</span>
+					<span class="text-caption text-grey-5 q-mt-xs">Разрешите браузеру показ нужного окна, чтобы делать скриншоты в один клик</span>
+				</div>
+				
+				<div v-else class="capture-container column items-center">
+					<div class="video-wrapper relative-position">
+						<video ref="videoPlayerRef" autoplay playsinline muted class="capture-video"></video>
+					</div>
+					<div class="capture-actions q-mt-md row q-gutter-md justify-center">
+						<q-btn
+							unelevated
+							no-caps
+							rounded
+							color="negative"
+							icon="stop_screen_share"
+							label="Завершить"
+							class="btn-create-steps"
+							@click="stopCapture"
+						/>
+						<q-btn
+							unelevated
+							no-caps
+							rounded
+							color="primary"
+							icon="camera"
+							label="Сделать снимок (Пробел)"
+							class="btn-create-steps btn-create-steps--primary"
+							@click="takeSnapshot"
+						/>
+					</div>
+				</div>
+			</template>
+
 			<!-- Режим видео -->
-			<template v-else>
+			<template v-else-if="uploadMode === 'video'">
 				<!-- Информация об ограничениях -->
 				<div class="video-requirements q-mb-lg">
 					<div class="requirements-header">
@@ -160,12 +219,73 @@
 					/>
 				</template>
 			</template>
+
+			<!-- Режим PDF -->
+			<template v-else-if="uploadMode === 'pdf'">
+				<div class="video-requirements q-mb-lg">
+					<div class="requirements-header">
+						<q-icon name="picture_as_pdf" size="18px" color="primary" />
+						<span class="requirements-title">Разбор инструкции</span>
+					</div>
+					<p class="text-caption text-grey-7 q-mb-none">
+						Загрузите PDF-файл. AI проанализирует каждую страницу, найдет скриншоты и автоматически создаст шаги с описанием и областями для нажатия.
+					</p>
+				</div>
+				
+				<div
+					v-if="!pdfFile"
+					class="dropzone-video"
+					@click="triggerPdfInput"
+					@dragover.prevent
+					@drop.prevent="onPdfDrop"
+					@dragenter.prevent
+					@dragleave.prevent
+				>
+					<q-icon name="picture_as_pdf" size="64px" color="primary" class="q-mb-sm" />
+					<span class="text-body1 text-grey-8 text-weight-medium">Выберите PDF</span>
+					<span class="text-caption text-grey-5 q-mt-xs">Перетащите файл инструкции сюда</span>
+					<input
+						ref="pdfInputRef"
+						type="file"
+						accept=".pdf"
+						class="hidden"
+						@change="onPdfSelected"
+					/>
+				</div>
+				<template v-else>
+					<div class="video-preview-card q-mb-md">
+						<div class="video-preview-icon">
+							<q-icon name="picture_as_pdf" size="32px" color="primary" />
+						</div>
+						<div class="video-preview-info">
+							<span class="video-preview-name">{{ pdfFile.name }}</span>
+							<span class="video-preview-size">{{ formatFileSize(pdfFile.size) }}</span>
+						</div>
+						<q-btn flat round dense icon="close" size="sm" color="grey-6" @click="clearPdf">
+							<q-tooltip>Удалить</q-tooltip>
+						</q-btn>
+					</div>
+					<q-btn
+						unelevated
+						no-caps
+						rounded
+						color="primary"
+						icon="auto_awesome"
+						label="Создать шаги из PDF"
+						size="lg"
+						:loading="loading"
+						:disable="loading"
+						class="btn-create-steps btn-create-steps--primary btn-create-steps--lg"
+						@click="uploadPdf"
+					/>
+				</template>
+			</template>
 		</div>
 	</div>
 </template>
 
 <script setup>
-import { ref, watch } from "vue";
+import { ref, watch, onMounted, onUnmounted } from "vue";
 import useDnd from "@composables/useDnd.js";
 import { MetaTrainingApi, TrainingApi } from "@api";
 import { useRoute } from "vue-router";
@@ -187,11 +307,111 @@ const loading = ref(false);
 const uploadMode = ref("photos");
 const videoFile = ref(null);
 const videoInputRef = ref(null);
+const pdfFile = ref(null);
+const pdfInputRef = ref(null);
 
-watch(uploadMode, () => {
-	videoFile.value = null;
-	images.value = [];
+const videoStream = ref(null);
+const videoPlayerRef = ref(null);
+
+const handleGlobalKeydown = (e) => {
+	if (uploadMode.value === "capture" && videoStream.value) {
+		// Проверяем все возможные варианты кода клавиши пробел
+		if (e.code === "Space" || e.key === " " || e.keyCode === 32) {
+			// Игнорируем нажатия, если пользователь печатает в инпут
+			const targetTag = e.target?.tagName?.toLowerCase();
+			if (targetTag === "input" || targetTag === "textarea") return;
+			
+			e.preventDefault();
+			takeSnapshot();
+		}
+	}
+};
+
+onMounted(() => {
+	document.addEventListener("keydown", handleGlobalKeydown, { capture: true });
 });
+
+onUnmounted(() => {
+	document.removeEventListener("keydown", handleGlobalKeydown, { capture: true });
+});
+
+watch(uploadMode, (newVal) => {
+	if (newVal !== "video") videoFile.value = null;
+	if (newVal !== "pdf") pdfFile.value = null;
+	if (newVal !== "photos" && images.value.length > 0 && newVal !== "capture") images.value = [];
+	if (newVal !== "capture") stopCapture();
+});
+
+const startCapture = async () => {
+	try {
+		const stream = await navigator.mediaDevices.getDisplayMedia({
+			video: { displaySurface: "window" },
+			audio: false
+		});
+		videoStream.value = stream;
+		
+		stream.getVideoTracks()[0].onended = () => {
+			stopCapture();
+		};
+
+		setTimeout(() => {
+			if (videoPlayerRef.value) {
+				videoPlayerRef.value.srcObject = stream;
+			}
+		}, 100);
+	} catch (error) {
+		console.error("Ошибка при захвате экрана:", error);
+		$q.notify({
+			message: "Не удалось запустить захват экрана",
+			caption: "Возможно, вы отменили выбор или у приложения нет прав",
+			type: "negative",
+			position: "top"
+		});
+	}
+};
+
+const stopCapture = () => {
+	if (videoStream.value) {
+		videoStream.value.getTracks().forEach((track) => track.stop());
+		videoStream.value = null;
+	}
+	if (uploadMode.value === "capture") {
+		uploadMode.value = "photos";
+	}
+};
+
+const takeSnapshot = () => {
+	const video = videoPlayerRef.value;
+	if (!video || !video.videoWidth) return;
+
+	const canvas = document.createElement("canvas");
+	canvas.width = video.videoWidth;
+	canvas.height = video.videoHeight;
+	const ctx = canvas.getContext("2d");
+	ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+	canvas.toBlob((blob) => {
+		if (!blob) return;
+		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+		const file = new File([blob], `screenshot_${timestamp}.png`, { type: "image/png" });
+		const newImage = {
+			id: Date.now(),
+			name: file.name,
+			url: URL.createObjectURL(file),
+			size: file.size,
+			originalFile: file,
+		};
+		images.value = [...images.value, newImage];
+		
+		$q.notify({
+			message: "Снимок сохранен",
+			type: "positive",
+			position: "bottom-right",
+			icon: "camera",
+			timeout: 1000
+		});
+	}, "image/png", 1.0);
+};
 
 const formatFileSize = (bytes) => {
 	if (!bytes) return "";
@@ -218,6 +438,26 @@ const onVideoDrop = (event) => {
 const clearVideo = () => {
 	videoFile.value = null;
 	if (videoInputRef.value) videoInputRef.value.value = "";
+};
+
+const triggerPdfInput = () => pdfInputRef.value?.click();
+
+const onPdfSelected = (event) => {
+	const file = event.target.files?.[0];
+	if (file) pdfFile.value = file;
+	event.target.value = "";
+};
+
+const onPdfDrop = (event) => {
+	const file = event.dataTransfer?.files?.[0];
+	if (file && file.type === "application/pdf") {
+		pdfFile.value = file;
+	}
+};
+
+const clearPdf = () => {
+	pdfFile.value = null;
+	if (pdfInputRef.value) pdfInputRef.value.value = "";
 };
 
 const downloadPhotos = (event) => {
@@ -317,6 +557,50 @@ const uploadVideo = async () => {
 	} catch {
 		$q.notify({
 			message: "Ошибка обработки видео",
+			type: "negative",
+			position: "top",
+		});
+	} finally {
+		loading.value = false;
+	}
+};
+
+const uploadPdf = async () => {
+	if (!pdfFile.value) return;
+	loading.value = true;
+	try {
+		const response = await trainingApi.uploadPdf(route.params.uuid, pdfFile.value);
+		const createdStepsCount = response.data?.created_steps?.length || 0;
+
+		const { data } = await trainingApi.getTrainingByUuid(route.params.uuid);
+		store.setTrainingData(data);
+
+		clearPdf();
+
+		if (createdStepsCount > 0) {
+			$q.notify({
+				message: `Успешно создано шагов: ${createdStepsCount}`,
+				caption: "AI проанализировал инструкцию и определил области действий.",
+				type: "positive",
+				position: "bottom-right",
+				icon: "picture_as_pdf",
+				timeout: 5000,
+			});
+		} else {
+			$q.notify({
+				message: "Шаги не были созданы",
+				caption: "AI не смог найти подходящие действия в инструкции. Попробуйте другой файл.",
+				type: "warning",
+				position: "bottom-right",
+				icon: "warning",
+				timeout: 7000,
+			});
+		}
+	} catch (err) {
+		console.error("PDF Processing Error:", err);
+		$q.notify({
+			message: "Ошибка обработки PDF",
+			caption: err.response?.data?.detail || "Проверьте формат файла и настройки AI",
 			type: "negative",
 			position: "top",
 		});
@@ -458,6 +742,53 @@ const uploadVideo = async () => {
 .requirement-item strong {
 	color: #1f2937;
 	font-weight: 600;
+}
+
+/* ——— Режим захвата экрана ——— */
+.capture-start-card {
+	width: 340px;
+	max-width: 100%;
+	height: 200px;
+	border-radius: 16px;
+	border: 2px dashed rgba(89, 106, 246, 0.28);
+	background: rgba(191, 197, 244, 0.12);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	transition: background-color 0.3s, border-color 0.3s;
+	text-align: center;
+	padding: 0 20px;
+}
+.capture-start-card:hover {
+	background: rgba(191, 197, 244, 0.22);
+	border-color: rgba(89, 106, 246, 0.45);
+}
+
+.capture-container {
+	width: 100%;
+	max-width: 520px;
+}
+
+.video-wrapper {
+	width: 100%;
+	aspect-ratio: 16/9;
+	border-radius: 14px;
+	overflow: hidden;
+	background: #111;
+	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+	border: 2px solid rgba(80, 100, 247, 0.1);
+}
+
+.capture-video {
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+}
+
+.capture-actions {
+	width: 100%;
 }
 
 /* ——— Превью фото ——— */

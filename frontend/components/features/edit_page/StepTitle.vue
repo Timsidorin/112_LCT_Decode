@@ -99,31 +99,30 @@ const persistName = async (nameToSave) => {
 	top: 16px;
 	left: 50%;
 	transform: translateX(-50%);
-	z-index: 1;
-	background: rgba(255, 255, 255, 0.85);
-	backdrop-filter: blur(16px);
-	-webkit-backdrop-filter: blur(16px);
-	padding: 8px 16px;
-	border-radius: 12px;
-	box-shadow: 0 2px 16px rgba(0, 0, 0, 0.08);
-	border: 1px solid rgba(255, 255, 255, 0.6);
-	transition: box-shadow 0.2s ease;
+	z-index: 100;
+	padding: 8px 18px;
+	border-radius: 100px;
+	transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+	cursor: pointer;
 }
 
 .step-title-card:hover {
-	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+	transform: translateX(-50%) translateY(-2px) scale(1.02);
+	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(168, 85, 247, 0.2);
 }
 
 .step-title-text {
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	gap: 10px;
 	font-size: 14px;
-	font-weight: 500;
-	color: #1a1a2e;
+	font-weight: 600;
+	color: #0f172a;
+	letter-spacing: -0.01em;
 }
 
 .step-title-icon {
-	color: #9ca3af;
+	color: #a855f7;
+	opacity: 0.8;
 }
 </style>

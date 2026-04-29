@@ -1,10 +1,12 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import UUID4
 
 from depends import (
+    get_gigachat_tts_service,
+    get_pdf_ai_service,
     get_s3_service,
     get_trainings_service,
     get_user_service,
@@ -24,8 +26,12 @@ from schemas.trainings import (
     TrainingStepResponse,
     TrainingStepUpdate,
     TrainingUpdate,
+    TextRewriteRequest,
+    TextRewriteResponse,
 )
+from services.external_services.gigachat_tts_service import GigaChatTTSService
 from services.external_services.s3_service import S3Service
+from services.pdf_ai_service import PdfAiService
 from services.trainings_service import TrainingsService
 from services.user_service import UserService
 from services.video_ai_service import VideoAIService
@@ -376,3 +382,110 @@ async def get_public_training(
     access_token: str, service: TrainingsService = Depends(get_trainings_service)
 ):
     return await service.get_public_training_data(access_token)
+
+
+@router.post(
+    "/ai/rewrite-task",
+    name="AI-улучшение текста задания",
+)
+async def ai_rewrite_task(
+    request: TextRewriteRequest,
+    video_ai_service: VideoAIService = Depends(get_video_ai_service),
+    token: str = Depends(oauth2_scheme),
+):
+    try:
+        def stream_generator():
+            for chunk in video_ai_service.stream_rewrite_task_text(request.text):
+                yield chunk
+        return StreamingResponse(stream_generator(), media_type="text/plain")
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Ошибка переписывания текста: {str(e)}"
+        )
+
+
+@router.post(
+    "/{training_uuid}/steps/{step_id}/tts",
+    name="Генерация озвучки для шага",
+)
+async def generate_step_tts(
+    training_uuid: UUID4,
+    step_id: int,
+    tts_service: GigaChatTTSService = Depends(get_gigachat_tts_service),
+    s3_service: S3Service = Depends(get_s3_service),
+    training_service: TrainingsService = Depends(get_trainings_service),
+    token: str = Depends(oauth2_scheme),
+):
+    """Генерация аудиофайла для задания шага через SaluteSpeech и сохранение в S3"""
+    import traceback
+    import uuid as uuid_lib
+    from core.logging_config import logger
+
+    try:
+        # Получаем шаг из БД
+        steps = await training_service.get_training_steps(training_uuid)
+        step = next((s for s in steps if s.id == step_id), None)
+        if not step:
+            raise HTTPException(status_code=404, detail="Шаг не найден")
+
+        annotation = step.annotation
+        if not annotation or not annotation.strip():
+            raise HTTPException(status_code=400, detail="Текст задания пустой")
+
+        # Синтезируем речь
+        logger.info(f"[TTS] Запрос синтеза речи для шага {step_id}")
+        audio_bytes = await tts_service.synthesize(annotation)
+        logger.info(f"[TTS] Синтез завершён, получено {len(audio_bytes)} байт")
+
+        # Загружаем в S3
+        object_name = f"audio/{uuid_lib.uuid4()}.wav"
+        audio_url = await s3_service.upload_file(audio_bytes, object_name, training_uuid)
+        logger.info(f"[TTS] Аудио сохранено в S3: {audio_url}")
+
+        # Сохраняем audio_url в БД
+        await training_service.update_step(
+            training_uuid, step_id, TrainingStepUpdate(audio_url=audio_url)
+        )
+
+        return {"audio_url": audio_url}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[TTS] Ошибка: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Ошибка генерации озвучки: {str(e)}")
+
+
+@router.post("/upload-pdf/{training_uuid}", name="Загрузка PDF-инструкции (AI-анализ)")
+async def upload_pdf_for_training(
+    training_uuid: UUID4,
+    file: UploadFile = File(..., description="PDF-файл инструкции"),
+    pdf_ai_service: PdfAiService = Depends(get_pdf_ai_service),
+    s3_service: S3Service = Depends(get_s3_service),
+    trainings_service: TrainingsService = Depends(get_trainings_service),
+    token: str = Depends(oauth2_scheme),
+):
+    """
+    Принимает PDF-инструкцию, анализирует каждую страницу через VLM.
+    Модель по тексту инструкции определяет кликабельную область на скриншоте.
+    Для каждой страницы создаётся шаг тренинга с bbox, описанием и скрином.
+    """
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Загрузите файл в формате PDF")
+
+    pdf_bytes = await file.read()
+    if len(pdf_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Файл PDF пустой")
+
+    created_steps = await trainings_service.add_steps_from_pdf(
+        training_uuid=training_uuid,
+        pdf_bytes=pdf_bytes,
+        pdf_ai_service=pdf_ai_service,
+        s3_service=s3_service,
+    )
+
+    return {
+        "success": True,
+        "message": f"PDF обработан. Создано {len(created_steps)} шагов.",
+        "created_steps": created_steps,
+    }

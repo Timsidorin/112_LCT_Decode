@@ -1,18 +1,5 @@
 <template>
 	<div ref="flowContainerRef" class="fullscreen-flow">
-		<div v-if="showViewportHint" class="viewport-hint" role="note" @click.stop>
-			<q-icon name="open_with" size="18px" />
-			<span>Масштаб: колесо мыши. Перемещение: зажмите среднюю кнопку.</span>
-			<q-btn
-				flat
-				dense
-				round
-				size="sm"
-				icon="close"
-				color="white"
-				@click="dismissViewportHint"
-			/>
-		</div>
 		<VueFlow v-model="nodes" :default-viewport="{ zoom: 0.7 }" :node-types="nodeTypes" @node-drag-stop="onNodeDragStop">
 			<template #node-screenshot>
 				<ScreenshotNode />
@@ -27,17 +14,22 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, computed, provide, nextTick } from "vue";
 import { VueFlow, Position } from "@vue-flow/core";
-import { eventRequiresArea } from "@utils/actionTypes.js";
+import { eventRequiresArea, eventRequiresAreaCoordinates } from "@utils/actionTypes.js";
 import { useTrainingData } from "@store/editTraining.js";
+import { trainingStepApi } from "@api";
+import { useQuasar } from "quasar";
 import ResizableNode from "./ResizableNode.vue";
 import ScreenshotNode from "./ScreenshotNode.vue";
+import { useVueFlow } from "@vue-flow/core";
 
 const store = useTrainingData();
+const $q = useQuasar();
 const nodes = ref([]);
 const flowContainerRef = ref(null);
 const nodeTypes = { screenshot: ScreenshotNode };
 const DEFAULT_ZOOM = 0.7;
-const showViewportHint = ref(true);
+
+const { onPaneClick } = useVueFlow();
 
 const eventRequiresAreaOpt = (event) => eventRequiresArea(event);
 
@@ -45,24 +37,99 @@ const drawingEnabled = computed(() => {
 	return !!store.selectedEvent && eventRequiresAreaOpt(store.selectedEvent);
 });
 
-const hasDrawnHint = () => !!store.selectedStep?.area;
-
+// Флаг, указывающий, происходит ли сейчас рисование новой области
+const isCurrentlyDrawing = ref(false);
 const lastDrawnArea = ref(null);
 
-const onAreaDrawn = (area) => {
+onPaneClick(() => {
+	if (isCurrentlyDrawing.value) isCurrentlyDrawing.value = false;
+});
+
+const onAreaDrawn = async (area) => {
+	isCurrentlyDrawing.value = false;
 	const event = store.selectedEvent;
 	if (!event) return;
 	lastDrawnArea.value = { x: area.x, y: area.y, width: area.width, height: area.height };
 	createNode(event, area.width, area.height, area.x, area.y);
+	// Автосохранение после рисования
+	if (eventRequiresAreaCoordinates(event) && store.trainingData?.uuid && store.selectedStep?.id) {
+		try {
+			await trainingStepApi.editStep(store.trainingData.uuid, store.selectedStep.id, {
+				action_type_id: event.id,
+				area: {
+					x: area.x,
+					y: area.y,
+					width: area.width,
+					height: area.height,
+					metaText: store.selectedStep.area?.metaText ?? '',
+					metaKeywords: store.selectedStep.area?.metaKeywords ?? [],
+					metaTextScale: store.selectedStep.area?.metaTextScale ?? 1,
+				}
+			});
+			// Обновляем стор — чтобы при возврате на шаг область восстановилась
+			if (!store.selectedStep.area) store.selectedStep.area = {};
+			Object.assign(store.selectedStep.area, area);
+			store.selectedStep.action_type = { ...event };
+			// Синхронизируем объект в массиве шагов
+			const stepInList = store.steps?.find(s => s.id === store.selectedStep.id);
+			if (stepInList) {
+				if (!stepInList.area) stepInList.area = {};
+				Object.assign(stepInList.area, area);
+				stepInList.action_type = { ...event };
+			}
+			$q.notify({ color: 'positive', message: 'Область сохранена', position: 'bottom-right', icon: 'check_circle', timeout: 1500 });
+		} catch {
+			$q.notify({ color: 'negative', message: 'Не удалось сохранить область', position: 'top' });
+		}
+	}
 };
 
-const onNodeDragStop = () => {
+const onNodeDragStop = async () => {
+	// Пересохраняем позицию ноды после перетаскивания
+	const event = store.selectedEvent;
+	if (!event || !eventRequiresAreaCoordinates(event)) return;
+	if (!store.trainingData?.uuid || !store.selectedStep?.id) return;
+	if (nodes.value.length < 2) return;
+	const imageNode = nodes.value[0];
+	const eventNode = nodes.value[1];
+	const imgPos = imageNode.computedPosition ?? imageNode.position ?? { x: 0, y: 0 };
+	const evtPos = eventNode.computedPosition ?? eventNode.position ?? { x: 0, y: 0 };
+	const relX = Math.max(0, Math.round(evtPos.x - imgPos.x));
+	const relY = Math.max(0, Math.round(evtPos.y - imgPos.y));
+	const dims = eventNode.dimensions ?? {};
+	const w = Math.round(dims.width || parseInt(eventNode.style?.width, 10) || 0);
+	const h = Math.round(dims.height || parseInt(eventNode.style?.height, 10) || 0);
+	if (!w || !h) return;
+	const updatedArea = { x: relX, y: relY, width: w, height: h };
+	try {
+		await trainingStepApi.editStep(store.trainingData.uuid, store.selectedStep.id, {
+			action_type_id: event.id,
+			area: {
+				...updatedArea,
+				metaText: store.selectedStep.area?.metaText ?? '',
+				metaKeywords: store.selectedStep.area?.metaKeywords ?? [],
+				metaTextScale: store.selectedStep.area?.metaTextScale ?? 1,
+			}
+		});
+		if (!store.selectedStep.area) store.selectedStep.area = {};
+		Object.assign(store.selectedStep.area, updatedArea);
+		store.selectedStep.action_type = { ...event };
+		const stepInList = store.steps?.find(s => s.id === store.selectedStep.id);
+		if (stepInList) {
+			if (!stepInList.area) stepInList.area = {};
+			Object.assign(stepInList.area, updatedArea);
+			stepInList.action_type = { ...event };
+		}
+		$q.notify({ color: 'positive', message: 'Позиция обновлена', position: 'bottom-right', icon: 'check_circle', timeout: 1200 });
+	} catch {
+		// тихо игнорируем
+	}
 	lastDrawnArea.value = null;
 };
 
 provide("onAreaDrawn", onAreaDrawn);
 provide("drawingEnabled", drawingEnabled);
-provide("hasDrawnHint", hasDrawnHint);
+provide("setIsCurrentlyDrawing", (val) => { isCurrentlyDrawing.value = val; });
 provide("getAreaForSave", () => {
 	if (nodes.value.length < 2) return null;
 	const imageNode = nodes.value[0];
@@ -221,9 +288,13 @@ async function syncFlowFromStep() {
 	const ev = store.selectedEvent;
 	if (!ev || !eventRequiresAreaOpt(ev)) return;
 	const a = step.area;
-	const savedMatchesToolbar = step.action_type?.id === ev.id;
-	if (savedMatchesToolbar && a?.width > 0 && a?.height > 0) {
-		createNode(ev, a.width, a.height, a.x, a.y);
+	// Показываем сохранённую область если она есть И соответствует текущему типу события
+	const areaMatchesEvent = step.action_type?.id === ev.id;
+	if (areaMatchesEvent && a?.width > 0 && a?.height > 0) {
+		createNode(ev, a.width, a.height, a.x ?? 0, a.y ?? 0);
+	} else if (!areaMatchesEvent && a?.width > 0 && a?.height > 0 && !step.action_type) {
+		// Нет action_type на шаге, но area есть — показываем (данные после автосохранения)
+		createNode(ev, a.width, a.height, a.x ?? 0, a.y ?? 0);
 	} else {
 		createNode(ev);
 	}
@@ -266,19 +337,11 @@ const updateNodePositionOnResize = () => {
 	nodes.value = [...nodes.value];
 };
 
-function dismissViewportHint() {
-	showViewportHint.value = false;
-}
-
-function markViewportHintSeen() {
-	if (showViewportHint.value) showViewportHint.value = false;
-}
 
 /** При смене шага или картинки — восстановить выбранное действие из сохранённых данных шага */
 watch(
 	() => [store.selectedStep?.id, store.selectedStep?.image_url],
 	() => {
-		showViewportHint.value = true;
 		const st = store.selectedStep;
 		if (st?.action_type) {
 			store.selectEvent(st.action_type);
@@ -301,8 +364,6 @@ let flowResizeObserver = null;
 
 onMounted(() => {
 	void syncFlowFromStep();
-	flowContainerRef.value?.addEventListener("wheel", markViewportHintSeen, { passive: true });
-	flowContainerRef.value?.addEventListener("mousedown", markViewportHintSeen, { passive: true });
 	window.addEventListener("resize", updateNodePositionOnResize);
 	nextTick(() => {
 		nextTick(() => {
@@ -318,8 +379,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-	flowContainerRef.value?.removeEventListener("wheel", markViewportHintSeen);
-	flowContainerRef.value?.removeEventListener("mousedown", markViewportHintSeen);
 	window.removeEventListener("resize", updateNodePositionOnResize);
 	flowResizeObserver?.disconnect();
 });
@@ -341,34 +400,9 @@ onUnmounted(() => {
 	position: relative;
 }
 
-.viewport-hint {
-	position: absolute;
-	top: 10px;
-	left: 50%;
-	transform: translateX(-50%);
-	z-index: 50;
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-	max-width: min(94%, 760px);
-	padding: 8px 10px;
-	background: rgba(15, 23, 42, 0.82);
-	backdrop-filter: blur(8px);
-	border: 1px solid rgba(148, 163, 184, 0.28);
-	border-radius: 10px;
-	color: #e2e8f0;
-	font-size: 12px;
-	line-height: 1.35;
-}
-
-.fullscreen-flow .vue-flow {
-	flex: 1;
-	min-height: 0;
-	height: 100%;
-}
-
+.fullscreen-flow .vue-flow,
 .fullscreen-flow .vue-flow__pane {
-	background: #f0f1f5;
+	background: transparent !important;
 }
 
 .fullscreen-node {
@@ -390,6 +424,17 @@ onUnmounted(() => {
 }
 
 .event-node:hover {
-	box-shadow: 0 0 0 3px rgba(80, 100, 247, 0.2);
+	box-shadow: 0 0 0 4px rgba(80, 100, 247, 0.2);
+}
+
+.event-node.selected {
+	border: 2px solid #a855f7 !important;
+	box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
+	animation: node-pulse 2s infinite;
+}
+
+@keyframes node-pulse {
+	0%, 100% { box-shadow: 0 0 12px rgba(168, 85, 247, 0.3); }
+	50% { box-shadow: 0 0 20px rgba(168, 85, 247, 0.6); }
 }
 </style>

@@ -21,6 +21,8 @@ from services.external_services.s3_service import S3Service
 from services.trainings_service import TrainingsService
 from services.user_service import UserService
 from services.video_ai_service import VideoAIService
+from services.pdf_ai_service import PdfAiService
+from services.external_services.gigachat_tts_service import GigaChatTTSService
 
 """
 Файл внедрения зависимостей
@@ -150,3 +152,9 @@ def get_batch_video_service() -> BatchVideoService:
 
 def get_video_ai_service() -> VideoAIService:
     return VideoAIService()
+
+def get_pdf_ai_service() -> PdfAiService:
+    return PdfAiService()
+
+def get_gigachat_tts_service() -> GigaChatTTSService:
+    return GigaChatTTSService()

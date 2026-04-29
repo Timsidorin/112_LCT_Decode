@@ -7,7 +7,7 @@
 			color="primary"
 			icon="home"
 			label="На главную"
-			class="edit-page__home-btn"
+			class="edit-page__home-btn glass-panel"
 			@click="goToTrainingList"
 		/>
 
@@ -21,40 +21,44 @@
 
 			<!-- Скрин слева, панель задания справа -->
 			<template v-else>
-				<div class="edit-split">
+				<div class="edit-split premium-bg-container">
 					<div class="edit-split__main">
-						<div class="edit-overlays">
-							<group-steps />
-							<step-title />
-						</div>
-
-						<div v-if="selectedStep?.image_url" class="edit-area">
-							<transition name="hint-fade">
-								<div
-									v-if="!store.selectedEvent && !hintHidden"
-									class="edit-hint"
-								>
-									<q-icon name="touch_app" size="20px" class="q-mr-sm" />
-									<span>Выберите действие в тулбаре и выделите область на скриншоте</span>
-									<q-btn
-										flat
-										dense
-										round
-										size="sm"
-										icon="close"
-										color="white"
-										class="q-ml-sm"
-										@click="hideHint"
-									/>
+						<transition name="step-fade" mode="out-in">
+							<div :key="selectedStep?.id" class="edit-content-wrap">
+								<div class="edit-overlays">
+									<group-steps />
+									<step-title />
 								</div>
-							</transition>
 
-							<tool-bar />
-							<vue-flow-component />
-						</div>
+								<div v-if="selectedStep?.image_url" class="edit-area">
+									<transition name="hint-fade">
+										<div
+											v-if="!store.selectedEvent && !hintHidden"
+											class="edit-hint"
+										>
+											<q-icon name="touch_app" size="20px" class="q-mr-sm" />
+											<span>Выберите действие в тулбаре и выделите область на скриншоте</span>
+											<q-btn
+												flat
+												dense
+												round
+												size="sm"
+												icon="close"
+												color="white"
+												class="q-ml-sm"
+												@click="hideHint"
+											/>
+										</div>
+									</transition>
+
+									<tool-bar />
+									<vue-flow-component />
+								</div>
+							</div>
+						</transition>
 					</div>
 
-					<aside class="edit-split__aside">
+					<aside class="edit-split__aside glass-panel">
 						<step-task-editor />
 						<AIGeneratedBanner />
 					</aside>
@@ -151,7 +155,6 @@ onMounted(() => {
 .edit-page {
 	position: relative;
 	width: 100%;
-	/* #app без height: 100% — задаём окно целиком, иначе холст Vue Flow с height 0 */
 	height: 100vh;
 	min-height: 100vh;
 	display: flex;
@@ -184,10 +187,10 @@ onMounted(() => {
 	width: 100%;
 	align-items: stretch;
 	overflow: hidden;
+	background-color: transparent !important;
 }
 
 .edit-split__main {
-	position: relative;
 	flex: 1;
 	min-width: 0;
 	min-height: 0;
@@ -201,9 +204,9 @@ onMounted(() => {
 	display: flex;
 	flex-direction: column;
 	min-height: 0;
-	background: #fafbfc;
-	border-right: 1px solid rgba(15, 23, 42, 0.08);
-	overflow: hidden;
+	z-index: 100;
+	padding: 12px;
+	gap: 12px;
 }
 
 .edit-overlays {
@@ -258,6 +261,29 @@ onMounted(() => {
 .hint-fade-leave-to {
 	opacity: 0;
 	transform: translateX(-50%) translateY(-8px);
+}
+
+.edit-content-wrap {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+	position: relative;
+}
+
+.step-fade-enter-active,
+.step-fade-leave-active {
+	transition: opacity 0.3s var(--anim-ease-out), transform 0.3s var(--anim-ease-out);
+}
+
+.step-fade-enter-from {
+	opacity: 0;
+	transform: perspective(1000px) rotateX(1deg) translateY(4px);
+}
+
+.step-fade-leave-to {
+	opacity: 0;
+	transform: perspective(1000px) rotateX(-1deg) translateY(-4px);
 }
 
 @media (max-width: 900px) {

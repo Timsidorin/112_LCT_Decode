@@ -71,6 +71,12 @@ function dismissBanner() {
 	display: flex;
 	align-items: flex-start;
 	gap: 12px;
+	animation: banner-pop 0.4s var(--anim-ease-spring) forwards;
+}
+
+@keyframes banner-pop {
+	0% { opacity: 0; transform: scale(0.95) translateY(10px); }
+	100% { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 .ai-banner-content {

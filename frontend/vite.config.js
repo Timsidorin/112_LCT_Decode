@@ -9,7 +9,7 @@ export default defineConfig({
     quasar(),
   ],
   define: {
-    __BASE__URL__: JSON.stringify('http://localhost:8002'),
+    __BASE__URL__: JSON.stringify('https://ripely-receiving-shelduck.cloudpub.ru')
   },
   resolve: {
     alias: {

@@ -163,6 +163,9 @@ class TrainingStep(Base):
         comment="Задание для ученика (безопасный HTML)",
     )
     image_url: Mapped[Optional[str]] = mapped_column(sa.Text)
+    audio_url: Mapped[Optional[str]] = mapped_column(
+        sa.Text, nullable=True, comment="Ссылка на сгенерированную озвучку (S3)"
+    )
     photo_dimensions: Mapped[Optional[Dict]] = mapped_column(JSONB)
     training: Mapped["Training"] = relationship(
         "models.trainings.Training", back_populates="steps", lazy="selectin"

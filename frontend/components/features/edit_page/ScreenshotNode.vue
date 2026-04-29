@@ -47,6 +47,7 @@ const currentY = ref(0);
 
 const onAreaDrawn = inject("onAreaDrawn", null);
 const drawingEnabledRef = inject("drawingEnabled", ref(false));
+const setIsCurrentlyDrawing = inject("setIsCurrentlyDrawing", () => {});
 
 const drawingEnabled = computed(() =>
 	typeof drawingEnabledRef === "object" && drawingEnabledRef?.value !== undefined
@@ -117,6 +118,7 @@ function onMouseDown(e) {
 	if (!onAreaDrawn || !drawingEnabled.value) return;
 	e.preventDefault();
 	isDrawing.value = true;
+	setIsCurrentlyDrawing(true);
 	const { x, y } = getRelativeCoords(e);
 	startX.value = x;
 	startY.value = y;
@@ -134,6 +136,7 @@ function onMouseMove(e) {
 function onMouseUp(e) {
 	if (!isDrawing.value) return;
 	isDrawing.value = false;
+	setIsCurrentlyDrawing(false);
 	const { x, y } = getRelativeCoords(e);
 	currentX.value = x;
 	currentY.value = y;
@@ -152,6 +155,7 @@ function onMouseUp(e) {
 function onMouseLeave() {
 	if (isDrawing.value) {
 		isDrawing.value = false;
+		setIsCurrentlyDrawing(false);
 	}
 }
 </script>

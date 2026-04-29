@@ -39,24 +39,6 @@
 			<q-tooltip>Следующий шаг</q-tooltip>
 		</q-btn>
 
-		<q-btn
-			v-if="hintsAvailable"
-			round
-			unelevated
-			dense
-			:icon="hintsEnabled ? 'lightbulb' : 'lightbulb_outline'"
-			:color="hintsEnabled ? 'amber' : 'grey-7'"
-			class="nav-btn nav-btn--round nav-btn--hints"
-			@click="$emit('toggle-hints')"
-		>
-			<q-tooltip>
-				{{
-					hintsEnabled
-						? "Подсказки включены: после ошибки подсветим область или подставим текст"
-						: "Включить подсказки после ошибки"
-				}}
-			</q-tooltip>
-		</q-btn>
 	</div>
 </template>
 
@@ -84,19 +66,20 @@ const showNextButton = computed(() => {
 <style scoped>
 .passage-toolbar {
 	position: absolute;
-	bottom: 24px;
-	left: 0;
-	right: 0;
-	width: 100%;
-	padding: 0 20px;
-	box-sizing: border-box;
-	z-index: 25;
+	bottom: 32px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 1000;
+	padding: 10px 24px;
+	border-radius: 100px;
+	background: rgba(255, 255, 255, 0.4);
+	backdrop-filter: blur(20px);
+	-webkit-backdrop-filter: blur(20px);
+	border: 1px solid rgba(255, 255, 255, 0.5);
+	box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
 	display: flex;
 	align-items: center;
-	justify-content: center;
-	flex-wrap: wrap;
-	gap: 12px;
-	pointer-events: none;
+	gap: 16px;
 }
 
 .nav-btn--hints {
@@ -108,9 +91,9 @@ const showNextButton = computed(() => {
 }
 
 .nav-btn--round {
-	width: 44px;
-	height: 44px;
-	box-shadow: 0 4px 16px rgba(80, 100, 247, 0.35);
+	width: 48px;
+	height: 48px;
+	box-shadow: 0 8px 16px rgba(80, 100, 247, 0.25);
 }
 
 .nav-btn--round :deep(.q-btn__wrapper) {

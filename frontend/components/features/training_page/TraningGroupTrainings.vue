@@ -29,14 +29,14 @@
 				size="lg"
 				icon="add"
 				label="Создать тренинг"
-				@click="modal = true"
+				@click="openCreateModal"
 			/>
 		</div>
 
 		<!-- Сетка карточек -->
 		<div v-else class="trainings-grid q-px-lg q-pb-xl animate-stagger-children">
 			<!-- Карточка создания -->
-			<q-card class="training-card create-card" flat bordered @click="modal = true">
+			<q-card class="training-card create-card" flat bordered @click="openCreateModal">
 				<q-card-section class="create-card-section">
 					<div class="column items-center justify-center full-height">
 						<div class="create-icon-wrap">
@@ -110,7 +110,13 @@
 								<q-item-section avatar>
 									<q-icon name="edit" size="sm" />
 								</q-item-section>
-								<q-item-section>Редактировать</q-item-section>
+								<q-item-section>Редактировать шаги</q-item-section>
+							</q-item>
+							<q-item clickable v-close-popup @click="openSettingsData(training)">
+								<q-item-section avatar>
+									<q-icon name="settings" size="sm" />
+								</q-item-section>
+								<q-item-section>Настройки</q-item-section>
 							</q-item>
 							<q-item clickable v-close-popup @click="openPublishModal(training)">
 								<q-item-section avatar>
@@ -150,7 +156,7 @@
 		</div>
 	</div>
 
-	<training-modal v-model="modal"/>
+	<training-modal v-model="modal" :mode="modalMode" :editData="editingTraining"/>
 	<publish-modal-training
 		v-model="publishModal"
 		:data="publishTrainingData"
@@ -321,8 +327,22 @@ const trainings = ref([]);
 const api = new TrainingApi();
 const status = ref(true);
 const modal = ref(false);
+const modalMode = ref("create");
+const editingTraining = ref(null);
 const publishModal = ref(false);
 const publishTrainingData = ref(null);
+
+function openCreateModal() {
+	modalMode.value = "create";
+	editingTraining.value = null;
+	modal.value = true;
+}
+
+function openSettingsData(training) {
+	modalMode.value = "edit";
+	editingTraining.value = training;
+	modal.value = true;
+}
 
 const passageStatsOpen = ref(false);
 const passageStatsLoading = ref(false);

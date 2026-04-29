@@ -92,6 +92,51 @@ export class TrainingApi extends BaseApi {
 		super.params = params;
 		return super.createRequest();
 	}
+
+	async streamRewriteTaskText(text, onChunk) {
+		const token = localStorage.getItem("tokenAuth");
+		const response = await fetch(`${this.baseUrl}/training/ai/rewrite-task`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				...(token ? { "Authorization": `Bearer ${token}` } : {})
+			},
+			body: JSON.stringify({ text })
+		});
+
+		if (!response.ok) {
+			throw new Error("Network response was not ok");
+		}
+
+		const reader = response.body.getReader();
+		const decoder = new TextDecoder("utf-8");
+
+		while (true) {
+			const { value, done } = await reader.read();
+			if (done) break;
+			const chunk = decoder.decode(value, { stream: true });
+			if (chunk) onChunk(chunk);
+		}
+	}
+
+	generateStepTTS(trainingUuid, stepId) {
+		super.params = {};
+		super.httpMethod = 'post';
+		super.sourceUrl = `/training/${trainingUuid}/steps/${stepId}/tts`;
+		super.data = {};
+		return super.createRequest();
+	}
+
+	uploadPdf(trainingUuid, file) {
+		const formData = new FormData();
+		formData.append('file', file);
+		super.params = {};
+		super.httpMethod = 'post';
+		super.sourceUrl = `/training/upload-pdf/${trainingUuid}`;
+		super.data = formData;
+		super.headers = { 'Content-Type': 'multipart/form-data' };
+		return super.createRequest();
+	}
 }
 
 export const trainingApi = new TrainingApi();
