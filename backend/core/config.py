@@ -15,7 +15,8 @@ class Configs(BaseSettings):
     )
 
     # ------------ Веб-сервер ------------
-    HOST: str = "localhost"
+    HOST: str = Field(default="localhost", env="HOST")
+    SERVER_HOST: str = Field(default="", env="SERVER_HOST")
     PORT: int = 8003
 
     # ------------ Логирование ------------

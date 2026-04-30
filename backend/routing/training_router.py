@@ -1,6 +1,7 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from core.config import configs
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import UUID4
 
@@ -303,7 +304,7 @@ async def publish_training(
     service: TrainingsService = Depends(get_trainings_service),
 ):
     token = await service.publish_training(training_uuid)
-    BASE_URL = "https://ungraciously-relishing-char.cloudpub.ru/training/passage"
+    BASE_URL = f"{configs.SERVER_HOST}/training/passage"
     return {
         "success": True,
         "public_link": f"{BASE_URL}/{token}",
