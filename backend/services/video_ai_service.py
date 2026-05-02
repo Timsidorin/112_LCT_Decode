@@ -4,10 +4,11 @@ import os
 import re
 import tempfile
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import httpx
+import numpy as np
 from fastapi import HTTPException, UploadFile, status
 from openai import OpenAI
 
@@ -15,16 +16,19 @@ from core.config import configs
 from core.logging_config import logger
 
 ANALYSIS_PROMPT = """
-Сделай JSON шагов из видео для интерактивного тренинга (скринкаст ПО).
+Ты анализируешь СКРИНКАСТ (запись экрана) обучающего видео по работе с программным обеспечением.
+Твоя задача: составить точный пошаговый JSON для интерактивного тренинга-симулятора.
 
-Верни только JSON:
+Для каждого видимого действия пользователя (клик, двойной клик, правый клик, ввод текста, горячие клавиши) создай отдельный шаг.
+
+Верни ТОЛЬКО JSON без каких-либо пояснений или markdown-блоков:
 {
   "steps": [
     {
-      "timecode_before": "MM:SS",
-      "timecode_after": "MM:SS",
-      "title": "Короткое название шага",
-      "instruction_md": "Короткая инструкция (1-3 предложения) без заголовков.",
+      "timecode_before": "MM:SS.f",
+      "timecode_after": "MM:SS.f",
+      "title": "[Глагол действия] [объект действия]",
+      "instruction_md": "Чёткая инструкция для пользователя (1-3 предложения на русском).",
       "interaction": {
         "type": "left_click|right_click|double_click|hover|text_input|key_chord",
         "bbox": [x1, y1, x2, y2],
@@ -35,30 +39,49 @@ ANALYSIS_PROMPT = """
   ]
 }
 
-Жесткие правила:
-- timecode_before: момент на шкале видео, где интерфейс ещё НЕ изменён — стабильный кадр ПЕРЕД действием пользователя.
-- timecode_after: первый момент ПОСЛЕ действия, когда новый интерфейс уже виден (после анимаций/загрузки), стабильный кадр.
-- timecode_after > timecode_before; между ними — само действие (клик, ввод, хоткей).
-- bbox только для кадра timecode_before: нормализован 0..1, x1<x2, y1<y2. Обведи МИНИМАЛЬНУЮ зону: кнопку, иконку, поле ввода, чекбокс — не весь экран и не целое окно, если достаточно элемента.
-- тип interaction строго по фактическому действию в видео (не угадывай left_click если был двойной клик).
-- для text_input обязательно expected_text (точная строка с экрана, пробелы/переносы как в поле).
-- для key_chord обязательно key_chord как массив латиницей, например ["ctrl","s"].
-- для остальных expected_text=null и key_chord=null.
-- таймкоды с долями секунды при необходимости (например 1:05.3).
-- если границы шага или bbox неочевидны — шаг не добавляй.
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
+
+1. title — ВСЕГДА начинается с глагола действия: "Нажать кнопку Сохранить", "Ввести имя пользователя", "Выбрать пункт меню Файл", "Нажать Ctrl+S". НЕ пиши абстрактно "Шаг 1" или "Действие".
+
+2. timecode_before — точный таймкод кадра непосредственно ПЕРЕД действием (интерфейс стабилен, курсор виден, целевой элемент виден). Бери кадр максимально близко к моменту действия — за 0.1-0.3 секунды до клика.
+
+3. timecode_after — точный таймкод первого стабильного кадра ПОСЛЕ завершения действия (UI изменился, анимации/загрузка закончились). Если UI не изменился — всё равно укажи кадр через 0.5 секунды после действия.
+
+4. bbox строго нормализован 0..1 относительно ПОЛНОГО кадра видео. Обводи МИНИМАЛЬНЫЙ прямоугольник вокруг кликаемого элемента:
+   - Кнопка: только сама кнопка (не панель)
+   - Поле ввода: только поле (не форма)
+   - Пункт меню: только строка меню
+   - Иконка: только иконка
+   - ЗАПРЕЩЕНО: bbox шире 0.5 ширины экрана если цель — один элемент
+
+5. type — строго по фактическому действию:
+   - одиночный клик → left_click
+   - двойной клик → double_click  
+   - правый клик → right_click
+   - наведение без клика → hover
+   - ввод текста → text_input (обязательно expected_text)
+   - горячие клавиши → key_chord (обязательно key_chord: ["ctrl","s"])
+
+6. Для text_input: expected_text — ТОЧНЫЙ введённый текст как на экране.
+
+7. Для key_chord: key_chord — массив клавиш латиницей ["ctrl","s"], ["alt","f4"] и т.д.
+
+8. Не создавай шаг если: bbox неизвестен, действие неразличимо, это просто прокрутка без цели.
+
+9. Таймкоды с десятыми секунды: "1:05.3", "0:32.7".
 """
 
 FALLBACK_ANALYSIS_PROMPT = """
-Проанализируй видео и верни только JSON со списком шагов.
+Проанализируй видео-скринкаст и создай JSON шагов интерактивного тренинга.
+Верни ТОЛЬКО JSON без markdown и комментариев:
 
-Формат:
 {
   "steps": [
     {
-      "timecode_before": "ММ:СС",
-      "timecode_after": "ММ:СС",
-      "title": "Короткое название",
-      "instruction_md": "Короткая инструкция на русском",
+      "timecode_before": "MM:SS",
+      "timecode_after": "MM:SS",
+      "title": "[Глагол] [объект] — например: Нажать кнопку ОК",
+      "instruction_md": "Краткая инструкция на русском языке.",
       "interaction": {
         "type": "left_click|right_click|double_click|hover|text_input|key_chord",
         "bbox": [x1, y1, x2, y2],
@@ -70,11 +93,24 @@ FALLBACK_ANALYSIS_PROMPT = """
 }
 
 Правила:
-- steps непустой; у каждого шага bbox 0..1 на кадре ДО действия (timecode_before).
-- timecode_before — стабильный кадр до действия; timecode_after — стабильный кадр после изменения UI.
-- Для text_input expected_text обязателен и не пустой.
-- Без markdown-блоков и комментариев, только JSON.
+- Каждый шаг = одно чёткое пользовательское действие (клик, ввод, хоткей).
+- title начинается с глагола: "Нажать", "Выбрать", "Ввести", "Открыть".
+- timecode_before — кадр непосредственно перед действием (стабильный, интерфейс виден).
+- timecode_after — первый стабильный кадр после изменения UI.
+- bbox 0..1, минимальный вокруг целевого элемента, x1<x2, y1<y2.
+- text_input → expected_text обязателен.
+- key_chord → key_chord (массив) обязателен.
+- steps непустой.
 """
+
+# Лимит на base64-строку в байтах (26 MB < 28 MB лимита API с запасом)
+MAX_BASE64_BYTES = 26_000_000
+# Максимальная сторона кадра при масштабировании
+MAX_FRAME_SIDE = 1280
+# Целевой FPS для сжатого видео
+COMPRESSED_FPS = 2
+# Качество JPEG при сжатии кадров (0-100)
+JPEG_QUALITY = 60
 
 
 @dataclass
@@ -152,6 +188,256 @@ def _normalize_key_chord(raw: Any) -> Optional[List[str]]:
     return None
 
 
+class VideoCompressor:
+    """
+    Отвечает за сжатие видео до допустимого размера для API.
+    
+    Стратегия (применяется последовательно до достижения лимита):
+    1. Снижение FPS
+    2. Масштабирование разрешения
+    3. Снижение качества JPEG
+    4. Дополнительное снижение FPS
+    """
+
+    # Лимит base64-строки в байтах
+    MAX_BASE64_BYTES: int = MAX_BASE64_BYTES
+
+    def compress_video(self, video_path: str) -> Tuple[str, float, float]:
+        """
+        Сжимает видео до допустимого размера.
+        
+        Returns:
+            (compressed_path, original_fps, compressed_fps)
+            compressed_path может совпадать с video_path если сжатие не нужно.
+        """
+        # Проверяем исходный размер
+        original_size = os.path.getsize(video_path)
+        original_b64_size = (original_size * 4) // 3  # приблизительный размер base64
+
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Не удалось открыть видеофайл для сжатия",
+            )
+
+        original_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        orig_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        orig_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cap.release()
+
+        if original_b64_size <= self.MAX_BASE64_BYTES:
+            logger.info(
+                f"Видео не требует сжатия: ~{original_b64_size // 1024}KB base64"
+            )
+            return video_path, original_fps, original_fps
+
+        logger.info(
+            f"Видео требует сжатия: ~{original_b64_size // 1024}KB base64 "
+            f"(лимит {self.MAX_BASE64_BYTES // 1024}KB). "
+            f"Исходное: {orig_width}x{orig_height} @ {original_fps:.1f}fps, "
+            f"{total_frames} кадров"
+        )
+
+        # Подбираем параметры сжатия
+        params = self._select_compression_params(
+            original_fps=original_fps,
+            orig_width=orig_width,
+            orig_height=orig_height,
+            total_frames=total_frames,
+            original_b64_size=original_b64_size,
+        )
+
+        compressed_path = self._encode_video(video_path, **params)
+
+        # Проверяем результат
+        compressed_b64 = (os.path.getsize(compressed_path) * 4) // 3
+        logger.info(
+            f"Сжатое видео: ~{compressed_b64 // 1024}KB base64, "
+            f"params={params}"
+        )
+
+        if compressed_b64 > self.MAX_BASE64_BYTES:
+            logger.warning(
+                "Сжатое видео всё ещё превышает лимит, применяем агрессивное сжатие"
+            )
+            os.unlink(compressed_path)
+            params["target_fps"] = max(1, params["target_fps"] // 2)
+            params["jpeg_quality"] = max(30, params["jpeg_quality"] - 20)
+            params["max_side"] = max(640, params["max_side"] - 320)
+            compressed_path = self._encode_video(video_path, **params)
+
+            final_b64 = (os.path.getsize(compressed_path) * 4) // 3
+            logger.info(f"После агрессивного сжатия: ~{final_b64 // 1024}KB base64")
+
+        return compressed_path, original_fps, float(params["target_fps"])
+
+    def _select_compression_params(
+        self,
+        original_fps: float,
+        orig_width: int,
+        orig_height: int,
+        total_frames: int,
+        original_b64_size: int,
+    ) -> Dict[str, Any]:
+        """Выбирает оптимальные параметры сжатия на основе коэффициента."""
+        ratio = original_b64_size / self.MAX_BASE64_BYTES
+
+        # Базовые параметры
+        target_fps = COMPRESSED_FPS
+        max_side = MAX_FRAME_SIDE
+        jpeg_quality = JPEG_QUALITY
+
+        if ratio > 4:
+            # Очень большое видео
+            target_fps = 1
+            max_side = 960
+            jpeg_quality = 45
+        elif ratio > 2:
+            # Большое видео
+            target_fps = 1
+            max_side = 1280
+            jpeg_quality = 55
+        elif ratio > 1.5:
+            # Умеренно большое
+            target_fps = 2
+            max_side = 1280
+            jpeg_quality = 60
+        else:
+            # Немного превышает лимит
+            target_fps = 2
+            max_side = 1920
+            jpeg_quality = 70
+
+        # Не увеличиваем разрешение
+        orig_max_side = max(orig_width, orig_height)
+        if max_side > orig_max_side:
+            max_side = orig_max_side
+
+        # Не увеличиваем FPS выше исходного
+        if target_fps > original_fps:
+            target_fps = max(1, int(original_fps))
+
+        return {
+            "target_fps": target_fps,
+            "max_side": max_side,
+            "jpeg_quality": jpeg_quality,
+        }
+
+    def _encode_video(
+        self,
+        video_path: str,
+        target_fps: int,
+        max_side: int,
+        jpeg_quality: int,
+    ) -> str:
+        """
+        Перекодирует видео с заданными параметрами.
+        Использует MJPEG-контейнер через OpenCV (без ffmpeg зависимости).
+        """
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Не удалось открыть видеофайл для перекодирования",
+            )
+
+        src_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        orig_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        orig_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        # Вычисляем новое разрешение с сохранением соотношения сторон
+        scale = min(max_side / max(orig_width, orig_height, 1), 1.0)
+        new_width = int(orig_width * scale)
+        new_height = int(orig_height * scale)
+        # Округляем до чётных чисел (требование кодеков)
+        new_width = new_width - (new_width % 2)
+        new_height = new_height - (new_height % 2)
+        new_width = max(new_width, 2)
+        new_height = max(new_height, 2)
+
+        # Шаг пропуска кадров
+        frame_step = max(1, int(round(src_fps / target_fps)))
+
+        tmp_out = tempfile.NamedTemporaryFile(
+            delete=False, suffix=".avi"
+        )
+        tmp_out.close()
+
+        # MJPEG даёт лучший контроль над размером чем mp4v в OpenCV
+        fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+        writer = cv2.VideoWriter(
+            tmp_out.name,
+            fourcc,
+            float(target_fps),
+            (new_width, new_height),
+        )
+
+        if not writer.isOpened():
+            cap.release()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Не удалось создать VideoWriter для сжатия",
+            )
+
+        frame_idx = 0
+        written = 0
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            if frame_idx % frame_step == 0:
+                if scale < 1.0:
+                    frame = cv2.resize(
+                        frame,
+                        (new_width, new_height),
+                        interpolation=cv2.INTER_AREA,
+                    )
+                # Применяем JPEG-сжатие к каждому кадру
+                encode_params = [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality]
+                ok, buf = cv2.imencode(".jpg", frame, encode_params)
+                if ok:
+                    frame = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+                    writer.write(frame)
+                    written += 1
+            frame_idx += 1
+
+        cap.release()
+        writer.release()
+
+        logger.info(
+            f"Перекодировано: {written} кадров @ {target_fps}fps, "
+            f"{new_width}x{new_height}, качество={jpeg_quality}"
+        )
+
+        return tmp_out.name
+
+    def read_as_base64(self, video_path: str) -> Tuple[str, str]:
+        """
+        Читает файл и возвращает (mime_type, base64_string).
+        Определяет mime_type по расширению.
+        """
+        ext = os.path.splitext(video_path)[1].lower()
+        mime_map = {
+            ".mp4": "video/mp4",
+            ".avi": "video/avi",
+            ".mov": "video/quicktime",
+            ".webm": "video/webm",
+        }
+        mime = mime_map.get(ext, "video/mp4")
+
+        with open(video_path, "rb") as f:
+            data = f.read()
+
+        b64 = base64.b64encode(data).decode("utf-8")
+        logger.info(
+            f"Base64 размер для отправки: {len(b64) // 1024}KB "
+            f"(лимит {self.MAX_BASE64_BYTES // 1024}KB)"
+        )
+        return mime, b64
+
+
 class VideoAIService:
     def __init__(self):
         self.client = OpenAI(
@@ -163,6 +449,7 @@ class VideoAIService:
         self.model = configs.AI_MODEL
         self.fps = configs.AI_VIDEO_FPS
         self.fps_max = max(1, int(configs.AI_VIDEO_FPS_MAX or 12))
+        self.compressor = VideoCompressor()
 
     def _effective_api_fps(self) -> int:
         return max(1, min(int(round(float(self.fps or 1))), self.fps_max))
@@ -171,18 +458,43 @@ class VideoAIService:
         """
         Полный пайплайн:
         1. Сохраняет видео во временный файл
-        2. Отправляет видео в AI-модель для анализа
-        3. Парсит ответ (шаги, bbox, типы действий)
-        4. Извлекает кадры по таймкодам
-        5. Возвращает список VideoStepData
+        2. Сжимает видео если превышен лимит API
+        3. Отправляет в AI-модель для анализа
+        4. Парсит ответ (шаги, bbox, типы действий)
+        5. Извлекает кадры из ОРИГИНАЛЬНОГО видео по таймкодам
+        6. Возвращает список VideoStepData
         """
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+        # Сохраняем оригинал
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=".mp4"
+        ) as tmp:
             tmp.write(await video_file.read())
-            video_path = tmp.name
+            original_path = tmp.name
+
+        compressed_path: Optional[str] = None
 
         try:
+            # Сжимаем для отправки в API
+            compressed_path, original_fps, compressed_fps = (
+                self.compressor.compress_video(original_path)
+            )
+
+            is_compressed = compressed_path != original_path
+            send_path = compressed_path
+
+            logger.info(
+                f"Отправка в AI: {'сжатое' if is_compressed else 'оригинальное'} видео, "
+                f"fps={compressed_fps}"
+            )
+
             api_fps = self._effective_api_fps()
-            ai_response = self._call_ai_model(video_path, fps=api_fps, max_tokens=4800)
+            ai_response = self._call_ai_model(
+                send_path,
+                fps=api_fps,
+                max_tokens=4800,
+                original_fps=original_fps,
+                compressed_fps=compressed_fps,
+            )
             steps_payload = self._parse_ai_response(ai_response)
 
             if not steps_payload:
@@ -190,10 +502,12 @@ class VideoAIService:
                     "Первичный ответ AI не дал валидных шагов, запускаем fallback"
                 )
                 ai_response = self._call_ai_model(
-                    video_path,
+                    send_path,
                     prompt=FALLBACK_ANALYSIS_PROMPT,
                     fps=api_fps,
                     max_tokens=6400,
+                    original_fps=original_fps,
+                    compressed_fps=compressed_fps,
                 )
                 steps_payload = self._parse_ai_response(ai_response)
                 if not steps_payload:
@@ -202,12 +516,52 @@ class VideoAIService:
                         detail="AI-модель не смогла распознать действия в видео",
                     )
 
-            results = self._extract_frames_at_timecodes(video_path, steps_payload)
+            # Если видео было сжато, нужно скорректировать таймкоды
+            # (compressed_fps может отличаться от original_fps)
+            if is_compressed and compressed_fps != original_fps:
+                steps_payload = self._remap_timecodes(
+                    steps_payload,
+                    compressed_fps=compressed_fps,
+                    original_fps=original_fps,
+                    original_path=original_path,
+                )
+
+            # Кадры извлекаем из ОРИГИНАЛА для высокого качества
+            results = self._extract_frames_at_timecodes(
+                original_path, steps_payload
+            )
             return results
 
         finally:
-            if os.path.exists(video_path):
-                os.unlink(video_path)
+            if os.path.exists(original_path):
+                os.unlink(original_path)
+            if compressed_path and compressed_path != original_path:
+                if os.path.exists(compressed_path):
+                    os.unlink(compressed_path)
+
+    def _remap_timecodes(
+        self,
+        steps: List[Dict[str, Any]],
+        compressed_fps: float,
+        original_fps: float,
+        original_path: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        Если видео было сжато с другим FPS, таймкоды остаются корректными
+        (мы только пропускаем кадры, а не ускоряем видео).
+        
+        Однако если масштабирование по времени произошло, нужна коррекция.
+        В нашем случае frame_step просто пропускает кадры, время не меняется,
+        поэтому таймкоды совпадают. Метод оставлен для будущих нужд.
+        """
+        # Поскольку мы используем frame_step (пропуск кадров без изменения скорости),
+        # таймкоды в секундах остаются идентичными оригиналу.
+        # Коррекция не требуется.
+        logger.debug(
+            f"Ремаппинг таймкодов: compressed_fps={compressed_fps}, "
+            f"original_fps={original_fps} — пропуск не нужен (frame_step метод)"
+        )
+        return steps
 
     def _call_ai_model(
         self,
@@ -215,10 +569,52 @@ class VideoAIService:
         prompt: Optional[str] = None,
         fps: Optional[int] = None,
         max_tokens: Optional[int] = None,
+        original_fps: Optional[float] = None,
+        compressed_fps: Optional[float] = None,
     ) -> str:
-        """Кодирует видео в base64 и отправляет в AI-модель."""
-        with open(video_path, "rb") as f:
-            base64_video = base64.b64encode(f.read()).decode("utf-8")
+        """
+        Кодирует видео в base64 и отправляет в AI-модель.
+        Перед отправкой проверяет размер и при необходимости
+        дополнительно сжимает.
+        """
+        mime, base64_video = self.compressor.read_as_base64(video_path)
+
+        # Финальная проверка — если всё ещё превышает лимит
+        if len(base64_video) > MAX_BASE64_BYTES:
+            logger.error(
+                f"Base64 ({len(base64_video) // 1024}KB) всё ещё превышает лимит "
+                f"({MAX_BASE64_BYTES // 1024}KB) после сжатия. "
+                "Пробуем с минимальными параметрами."
+            )
+            # Аварийное сжатие: 1fps, 640px, качество 35
+            emergency_path = self.compressor._encode_video(
+                video_path,
+                target_fps=1,
+                max_side=640,
+                jpeg_quality=35,
+            )
+            try:
+                mime, base64_video = self.compressor.read_as_base64(emergency_path)
+                if len(base64_video) > MAX_BASE64_BYTES:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=(
+                            f"Видео слишком большое для обработки AI. "
+                            f"Размер после максимального сжатия: "
+                            f"{len(base64_video) // 1024 // 1024}MB. "
+                            "Пожалуйста, загрузите более короткое видео (до 5 минут)."
+                        ),
+                    )
+            finally:
+                if os.path.exists(emergency_path):
+                    os.unlink(emergency_path)
+
+        effective_fps = fps if fps is not None else self._effective_api_fps()
+
+        logger.info(
+            f"Отправка в AI: {len(base64_video) // 1024}KB base64, "
+            f"api_fps={effective_fps}, model={self.model}"
+        )
 
         completion = self.client.chat.completions.create(
             model=self.model,
@@ -229,9 +625,9 @@ class VideoAIService:
                         {
                             "type": "video_url",
                             "video_url": {
-                                "url": f"data:video/mp4;base64,{base64_video}"
+                                "url": f"data:{mime};base64,{base64_video}"
                             },
-                            "fps": fps if fps is not None else self.fps,
+                            "fps": effective_fps,
                         },
                         {"type": "text", "text": prompt or ANALYSIS_PROMPT},
                     ],
@@ -350,12 +746,11 @@ class VideoAIService:
         s = str(raw or "").strip()
         if not s:
             return ""
-        # Модель иногда отдаёт \n как текст, а не реальный перенос.
         s = s.replace("\\r\\n", "\n").replace("\\n", "\n")
-        # Нормализуем заголовки, если пришли «в одну строку».
         s = re.sub(r"\s*(##\s+)", r"\n\n\1", s)
-        s = re.sub(r"(##\s*(?:Цель|Действие|Контекст|Результат|Шаг))\s+", r"\1\n\n", s)
-        # Часто модель пишет " - " в одной строке; переводим в markdown-список.
+        s = re.sub(
+            r"(##\s*(?:Цель|Действие|Контекст|Результат|Шаг))\s+", r"\1\n\n", s
+        )
         s = re.sub(r"\s-\s", "\n- ", s)
         s = re.sub(r"\n{3,}", "\n\n", s).strip()
         return s
@@ -374,24 +769,29 @@ class VideoAIService:
             timecode_before = tb or legacy_tc
             timecode_after = ta
             timecode = timecode_before
+            title = str(item.get("title", "")).strip()
             instruction_md = self._normalize_instruction_md(
                 item.get("instruction_md", "")
             )
             inter = item.get("interaction")
-            # Поддержка «плоского» ответа модели:
-            # {type, bbox, expected_text, key_chord} без вложенного interaction.
             if not isinstance(inter, dict):
                 inter = item
 
             itype = _normalize_interaction_type(
-                str(inter.get("type") or inter.get("interaction_type") or "left_click")
+                str(
+                    inter.get("type")
+                    or inter.get("interaction_type")
+                    or "left_click"
+                )
             )
             bbox = self._coerce_bbox(inter.get("bbox"))
             expected_text = inter.get("expected_text")
             key_chord = _normalize_key_chord(inter.get("key_chord"))
 
             if not timecode_before or not isinstance(bbox, list) or len(bbox) != 4:
-                logger.warning("Пропущен шаг: некорректный timecode_before/timecode или bbox")
+                logger.warning(
+                    "Пропущен шаг: некорректный timecode_before/timecode или bbox"
+                )
                 continue
 
             if not instruction_md and not title:
@@ -406,7 +806,6 @@ class VideoAIService:
                 continue
 
             bbox = self._normalize_bbox_scale(bbox)
-            # На случай перепутанного порядка координат.
             x1, y1, x2, y2 = bbox
             bbox = [min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)]
             bbox = [max(0.0, min(1.0, b)) for b in bbox]
@@ -641,29 +1040,26 @@ class VideoAIService:
             "Улучши следующий текст описания/инструкции шага для интерактивного тренинга. "
             "Сделай его понятным и кратким, исправь опечатки и используй уместную Markdown-разметку. "
             "Можешь добавить немного эмодзи для живости. "
-            "Верни ТОЛЬКО улучшенный текст без вступительных фраз вроде 'Конечно, вот улучшенный текст:' и без markdown-блока ```markdown.\n\n"
+            "Верни ТОЛЬКО улучшенный текст без вступительных фраз вроде "
+            "'Конечно, вот улучшенный текст:' и без markdown-блока ```markdown.\n\n"
             f"Исходный текст:\n{text}"
         )
-        
+
         completion = self.client.chat.completions.create(
             model=self.model,
-            messages=[
-                {"role": "user", "content": prompt}
-            ],
+            messages=[{"role": "user", "content": prompt}],
             max_tokens=2000,
             temperature=0.7,
         )
-        
+
         result = completion.choices[0].message.content.strip()
-        if result.startswith("```md"):
-            result = result[5:]
-        elif result.startswith("```markdown"):
-            result = result[11:]
-        if result.startswith("```"):
-            result = result[3:]
+        for prefix in ("```markdown", "```md", "```"):
+            if result.startswith(prefix):
+                result = result[len(prefix):]
+                break
         if result.endswith("```"):
             result = result[:-3]
-            
+
         return result.strip()
 
     def stream_rewrite_task_text(self, text: str):
@@ -671,20 +1067,19 @@ class VideoAIService:
             "Улучши следующий текст описания/инструкции шага для интерактивного тренинга. "
             "Сделай его понятным и кратким, исправь опечатки и используй уместную Markdown-разметку. "
             "Можешь добавить немного эмодзи для живости. "
-            "Верни ТОЛЬКО улучшенный текст без вступительных фраз вроде 'Конечно, вот улучшенный текст:' и без markdown-блока ```markdown.\n\n"
+            "Верни ТОЛЬКО улучшенный текст без вступительных фраз вроде "
+            "'Конечно, вот улучшенный текст:' и без markdown-блока ```markdown.\n\n"
             f"Исходный текст:\n{text}"
         )
-        
+
         response = self.client.chat.completions.create(
             model=self.model,
-            messages=[
-                {"role": "user", "content": prompt}
-            ],
+            messages=[{"role": "user", "content": prompt}],
             max_tokens=2000,
             temperature=0.7,
             stream=True,
         )
-        
+
         for chunk in response:
             delta = chunk.choices[0].delta.content
             if delta:
