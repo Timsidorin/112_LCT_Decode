@@ -15,6 +15,11 @@
 import { ref, watch, onMounted, onUnmounted, computed, provide, nextTick } from "vue";
 import { VueFlow, Position } from "@vue-flow/core";
 import { eventRequiresArea, eventRequiresAreaCoordinates } from "@utils/actionTypes.js";
+import {
+	getExplicitActions,
+	findToolbarEventById,
+	buildAreaWithActions,
+} from "@utils/stepActionSequence.js";
 import { useTrainingData } from "@store/editTraining.js";
 import { trainingStepApi } from "@api";
 import { useQuasar } from "quasar";
@@ -54,28 +59,61 @@ const onAreaDrawn = async (area) => {
 	// Автосохранение после рисования
 	if (eventRequiresAreaCoordinates(event) && store.trainingData?.uuid && store.selectedStep?.id) {
 		try {
-			await trainingStepApi.editStep(store.trainingData.uuid, store.selectedStep.id, {
-				action_type_id: event.id,
-				area: {
+			const step = store.selectedStep;
+			const seq = getExplicitActions(step);
+			const idx = Math.min(
+				Math.max(0, store.stepActionEditIndex ?? 0),
+				Math.max(0, (seq?.length || 1) - 1)
+			);
+			let payload;
+			if (seq?.length) {
+				const actions = seq.map((x) => ({ ...x }));
+				while (actions.length <= idx) {
+					actions.push({
+						action_type_id: event.id,
+						x: 0,
+						y: 0,
+						width: 0,
+						height: 0,
+					});
+				}
+				const prev = actions[idx] || {};
+				actions[idx] = {
+					...prev,
+					action_type_id: event.id,
 					x: area.x,
 					y: area.y,
 					width: area.width,
 					height: area.height,
-					metaText: store.selectedStep.area?.metaText ?? '',
-					metaKeywords: store.selectedStep.area?.metaKeywords ?? [],
-					metaTextScale: store.selectedStep.area?.metaTextScale ?? 1,
-				}
-			});
-			// Обновляем стор — чтобы при возврате на шаг область восстановилась
+				};
+				const newArea = buildAreaWithActions(actions, step.area);
+				payload = {
+					action_type_id: actions[0].action_type_id,
+					area: newArea,
+				};
+			} else {
+				payload = {
+					action_type_id: event.id,
+					area: {
+						x: area.x,
+						y: area.y,
+						width: area.width,
+						height: area.height,
+						metaText: store.selectedStep.area?.metaText ?? '',
+						metaKeywords: store.selectedStep.area?.metaKeywords ?? [],
+						metaTextScale: store.selectedStep.area?.metaTextScale ?? 1,
+					},
+				};
+			}
+			await trainingStepApi.editStep(store.trainingData.uuid, store.selectedStep.id, payload);
 			if (!store.selectedStep.area) store.selectedStep.area = {};
-			Object.assign(store.selectedStep.area, area);
-			store.selectedStep.action_type = { ...event };
-			// Синхронизируем объект в массиве шагов
-			const stepInList = store.steps?.find(s => s.id === store.selectedStep.id);
+			Object.assign(store.selectedStep.area, payload.area);
+			store.selectedStep.action_type = { ...findToolbarEventById(payload.action_type_id) };
+			const stepInList = store.steps?.find((s) => s.id === store.selectedStep.id);
 			if (stepInList) {
 				if (!stepInList.area) stepInList.area = {};
-				Object.assign(stepInList.area, area);
-				stepInList.action_type = { ...event };
+				Object.assign(stepInList.area, payload.area);
+				stepInList.action_type = { ...findToolbarEventById(payload.action_type_id) };
 			}
 			$q.notify({ color: 'positive', message: 'Область сохранена', position: 'bottom-right', icon: 'check_circle', timeout: 1500 });
 		} catch {
@@ -102,23 +140,46 @@ const onNodeDragStop = async () => {
 	if (!w || !h) return;
 	const updatedArea = { x: relX, y: relY, width: w, height: h };
 	try {
-		await trainingStepApi.editStep(store.trainingData.uuid, store.selectedStep.id, {
-			action_type_id: event.id,
-			area: {
+		const step = store.selectedStep;
+		const seq = getExplicitActions(step);
+		let body;
+		if (seq?.length) {
+			const idx = Math.min(
+				Math.max(0, store.stepActionEditIndex ?? 0),
+				seq.length - 1
+			);
+			const actions = seq.map((x) => ({ ...x }));
+			const prev = actions[idx] || {};
+			actions[idx] = {
+				...prev,
+				action_type_id: event.id,
 				...updatedArea,
-				metaText: store.selectedStep.area?.metaText ?? '',
-				metaKeywords: store.selectedStep.area?.metaKeywords ?? [],
-				metaTextScale: store.selectedStep.area?.metaTextScale ?? 1,
-			}
-		});
+			};
+			const newArea = buildAreaWithActions(actions, step.area);
+			body = {
+				action_type_id: actions[0].action_type_id,
+				area: newArea,
+			};
+		} else {
+			body = {
+				action_type_id: event.id,
+				area: {
+					...updatedArea,
+					metaText: store.selectedStep.area?.metaText ?? '',
+					metaKeywords: store.selectedStep.area?.metaKeywords ?? [],
+					metaTextScale: store.selectedStep.area?.metaTextScale ?? 1,
+				},
+			};
+		}
+		await trainingStepApi.editStep(store.trainingData.uuid, store.selectedStep.id, body);
 		if (!store.selectedStep.area) store.selectedStep.area = {};
-		Object.assign(store.selectedStep.area, updatedArea);
-		store.selectedStep.action_type = { ...event };
-		const stepInList = store.steps?.find(s => s.id === store.selectedStep.id);
+		Object.assign(store.selectedStep.area, body.area);
+		store.selectedStep.action_type = { ...findToolbarEventById(body.action_type_id) };
+		const stepInList = store.steps?.find((s) => s.id === store.selectedStep.id);
 		if (stepInList) {
 			if (!stepInList.area) stepInList.area = {};
-			Object.assign(stepInList.area, updatedArea);
-			stepInList.action_type = { ...event };
+			Object.assign(stepInList.area, body.area);
+			stepInList.action_type = { ...findToolbarEventById(body.action_type_id) };
 		}
 		$q.notify({ color: 'positive', message: 'Позиция обновлена', position: 'bottom-right', icon: 'check_circle', timeout: 1200 });
 	} catch {
@@ -285,15 +346,35 @@ async function syncFlowFromStep() {
 	await createFullscreenNode();
 	await nextTick();
 	await nextTick();
-	const ev = store.selectedEvent;
+	const seq = getExplicitActions(step);
+	if (seq?.length) {
+		const idx = Math.min(
+			Math.max(0, store.stepActionEditIndex ?? 0),
+			seq.length - 1
+		);
+		const entry = seq[idx];
+		const ev =
+			store.selectedEvent ??
+			findToolbarEventById(entry.action_type_id);
+		const w = Number(entry.width) || 0;
+		const h = Number(entry.height) || 0;
+		const x = Number(entry.x) || 0;
+		const y = Number(entry.y) || 0;
+		if (eventRequiresAreaOpt(ev) && w > 0 && h > 0) {
+			createNode(ev, w, h, x, y);
+		} else {
+			createNode(ev);
+		}
+		return;
+	}
+
+	let ev = store.selectedEvent;
 	if (!ev || !eventRequiresAreaOpt(ev)) return;
 	const a = step.area;
-	// Показываем сохранённую область если она есть И соответствует текущему типу события
 	const areaMatchesEvent = step.action_type?.id === ev.id;
 	if (areaMatchesEvent && a?.width > 0 && a?.height > 0) {
 		createNode(ev, a.width, a.height, a.x ?? 0, a.y ?? 0);
 	} else if (!areaMatchesEvent && a?.width > 0 && a?.height > 0 && !step.action_type) {
-		// Нет action_type на шаге, но area есть — показываем (данные после автосохранения)
 		createNode(ev, a.width, a.height, a.x ?? 0, a.y ?? 0);
 	} else {
 		createNode(ev);
@@ -338,12 +419,34 @@ const updateNodePositionOnResize = () => {
 };
 
 
-/** При смене шага или картинки — восстановить выбранное действие из сохранённых данных шага */
+/**
+ * При смене шага, картинки, подшага или цепочки — выставить тулбар из данных шага.
+ * Не вызывается при смене только selectedEvent (клик по иконке), чтобы не откатывать выбор пользователя.
+ */
 watch(
-	() => [store.selectedStep?.id, store.selectedStep?.image_url],
+	() => [
+		store.selectedStep?.id,
+		store.selectedStep?.image_url,
+		store.stepActionEditIndex,
+		store.selectedStep?.area?.actions,
+	],
 	() => {
 		const st = store.selectedStep;
-		if (st?.action_type) {
+		if (!st) {
+			store.selectEvent(null);
+			return;
+		}
+		const seq = getExplicitActions(st);
+		if (seq?.length) {
+			const idx = Math.min(
+				Math.max(0, store.stepActionEditIndex ?? 0),
+				seq.length - 1
+			);
+			const entry = seq[idx];
+			store.selectEvent(findToolbarEventById(entry.action_type_id));
+			return;
+		}
+		if (st.action_type) {
 			store.selectEvent(st.action_type);
 		} else {
 			store.selectEvent(null);
@@ -353,7 +456,13 @@ watch(
 );
 
 watch(
-	() => [store.selectedStep?.id, store.selectedStep?.image_url, store.selectedEvent?.id],
+	() => [
+		store.selectedStep?.id,
+		store.selectedStep?.image_url,
+		store.selectedEvent?.id,
+		store.stepActionEditIndex,
+		store.selectedStep?.area?.actions,
+	],
 	() => {
 		syncFlowFromStep();
 	},

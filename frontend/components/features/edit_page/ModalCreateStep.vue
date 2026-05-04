@@ -44,8 +44,8 @@
 						<span>до 5 мин</span>
 					</div>
 					<div class="requirements-compact-row">
-						<q-icon name="storage" size="14px" color="grey-6" />
-						<span>до 100 МБ</span>
+						<q-icon name="auto_fix_high" size="14px" color="grey-6" />
+						<span>без лимита размера — сжатие автоматически</span>
 					</div>
 					<div class="requirements-compact-row">
 						<q-icon name="slow_motion_video" size="14px" color="grey-6" />

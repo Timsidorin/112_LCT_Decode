@@ -157,8 +157,8 @@
 							<span>Длительность: <strong>до 5 минут</strong></span>
 						</div>
 						<div class="requirement-item">
-							<q-icon name="storage" size="16px" color="grey-7" />
-							<span>Размер: <strong>до 100 МБ</strong></span>
+							<q-icon name="auto_fix_high" size="16px" color="grey-7" />
+							<span>Объём файла не ограничиваем — перед AI большие ролики <strong>сжимаются автоматически</strong></span>
 						</div>
 						<div class="requirement-item">
 							<q-icon name="slow_motion_video" size="16px" color="grey-7" />

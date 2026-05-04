@@ -765,6 +765,7 @@ class TrainingsService:
             raise
         except Exception as e:
             await self.session.rollback()
+            logger.exception("Ошибка AI-анализа видео и создания шагов")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Ошибка AI-анализа видео и создания шагов: {str(e)}",

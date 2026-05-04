@@ -76,6 +76,8 @@ export class BaseApi {
 				method: this.httpMethod,
 				params: { ...this.params },
 				data: this.data,
+				maxBodyLength: Infinity,
+				maxContentLength: Infinity,
 				headers: {
 					...this.headers,
 					...{ Authorization: `Bearer ${localStorage.getItem("tokenAuth")}` },

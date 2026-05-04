@@ -14,36 +14,67 @@ from core.logging_config import logger
 # Максимальное количество страниц PDF для обработки
 PDF_MAX_PAGES = 60
 
-# DPI для рендеринга страниц PDF в PNG (150 — баланс качество/скорость)
-PDF_RENDER_DPI = 150
+# DPI для рендеринга страниц PDF в PNG (200 — хорошее качество для VLM)
+PDF_RENDER_DPI = 200
+
+# Минимальный размер изображения на странице (фильтр иконок)
+PDF_MIN_IMG_WIDTH = 120
+PDF_MIN_IMG_HEIGHT = 80
 
 PDF_PAGE_ANALYSIS_PROMPT = """
-Ты анализируешь СКРИНШОТ интерфейса программного обеспечения, извлеченный из инструкции.
-Твоя задача: найти ОДНО целевое действие на этом скриншоте.
+Ты анализируешь СКРИНШОТ программного обеспечения из обучающей инструкции.
+Твоя задача: определить ОДНО конкретное действие пользователя и точно разметить его область.
 
-Контекстная информация из текста инструкции (рядом с картинкой):
+Контекст из текста инструкции рядом со скриншотом:
 {page_text}
 
-Инструкция для тебя:
-1. Определи, какое действие нужно выполнить, глядя на скриншот и читая контекст.
-2. Найди UI-элемент (кнопку, поле ввода и т.д.) на этом скриншоте.
-3. Сформулируй краткое название и инструкцию на русском языке.
-4. Верни bbox этого элемента ОТНОСИТЕЛЬНО ЭТОГО СКРИНШОТА (в нормализованных координатах 0..1).
+Алгоритм:
+1. Прочитай контекст — он описывает что нужно сделать.
+2. Найди соответствующий UI-элемент на скриншоте (кнопку, поле, пункт меню, иконку).
+3. Обведи МИНИМАЛЬНЫЙ bbox вокруг этого элемента.
+4. Сформулируй title начиная с глагола действия.
 
-Верни только JSON:
+Верни ТОЛЬКО JSON без markdown-блоков и комментариев:
 {{
-  "title": "Название действия",
-  "instruction_md": "Инструкция...",
+  "title": "[Глагол] [объект] — например: Нажать кнопку Сохранить",
+  "instruction_md": "Чёткая инструкция для пользователя на русском (1-2 предложения).",
   "interaction": {{
-    "type": "left_click|text_input|key_chord|hover",
-    "bbox": [x1, y1, x2, y2], // [xmin, ymin, xmax, ymax] 0..1 относительно картинки
+    "type": "left_click|right_click|double_click|text_input|key_chord|hover",
+    "bbox": [x1, y1, x2, y2],
     "expected_text": null
   }}
 }}
 
-Важно:
-- Если элементов несколько — выбери самый важный, о котором говорится в тексте.
-- Будь предельно точен в координатах bbox.
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
+- title ВСЕГДА начинается с глагола: "Нажать", "Выбрать", "Ввести", "Открыть", "Установить", "Снять".
+- bbox нормализован 0..1 относительно данного скриншота. x1<x2, y1<y2.
+- bbox должен быть МИНИМАЛЬНЫМ вокруг элемента (только кнопка, только поле, только строка меню).
+- Запрещено: bbox занимает более 60% ширины или высоты скриншота если цель — один элемент.
+- type строго по характеру действия: текстовый ввод → text_input + expected_text.
+- Если действие из контекста неясно или элемент не виден — верни пустой JSON {{}}.
+"""
+
+PDF_FULL_PAGE_ANALYSIS_PROMPT = """
+Ты анализируешь ПОЛНУЮ СТРАНИЦУ инструкции по работе с программным обеспечением.
+На странице нет отдельных скриншотов, но может быть текстовое описание действий.
+
+Контекст страницы:
+{page_text}
+
+Задача: определи главное действие пользователя, описанное на этой странице.
+Если на странице виден UI (кнопки, поля, меню) — найди целевой элемент и его bbox.
+Если страница чисто текстовая без UI — верни пустой JSON {{}}.
+
+Верни ТОЛЬКО JSON без markdown:
+{{
+  "title": "[Глагол] [объект]",
+  "instruction_md": "Инструкция на русском (1-2 предложения).",
+  "interaction": {{
+    "type": "left_click|right_click|double_click|text_input|key_chord|hover",
+    "bbox": [x1, y1, x2, y2],
+    "expected_text": null
+  }}
+}}
 """
 
 
@@ -145,11 +176,34 @@ class PdfAiService:
             page_number = page_idx + 1
             
             images_on_page = page.get_images(full=True)
+            page_text_full = page.get_text("text").strip()
+
             if not images_on_page:
+                # Fallback: страница без изображений — рендерим всю страницу
+                if not page_text_full:
+                    logger.info(f"[PDF AI] Страница {page_number}: пустая, пропуск")
+                    continue
+                logger.info(f"[PDF AI] Страница {page_number}: нет изображений, рендерим всю страницу")
+                try:
+                    pix = page.get_pixmap(matrix=matrix, alpha=False)
+                    png_bytes = pix.tobytes("png")
+                    step_data = await self._analyze_image_object(
+                        page_number=page_number,
+                        png_bytes=png_bytes,
+                        context_text=page_text_full,
+                        width=pix.width,
+                        height=pix.height,
+                        full_page=True,
+                    )
+                    if step_data:
+                        results.append(step_data)
+                except Exception as e:
+                    logger.warning(f"[PDF AI] Стр {page_number}: ошибка рендеринга страницы — {e}")
                 continue
 
             logger.info(f"[PDF AI] Страница {page_number}: найдено {len(images_on_page)} объектов изображений")
 
+            added_for_page = False
             # Каждое изображение может быть одним шагом
             for img_info in images_on_page:
                 xref = img_info[0]
@@ -161,12 +215,20 @@ class PdfAiService:
                 rect = rects[0]
                 
                 # Фильтр на мелкие элементы (иконки, линии) — обычно скриншот крупный
-                if rect.width < 100 or rect.height < 50:
+                if rect.width < PDF_MIN_IMG_WIDTH or rect.height < PDF_MIN_IMG_HEIGHT:
                     continue
 
-                # Извлекаем текст рядом с картинкой (±150 пикселей по вертикали)
-                context_rect = fitz.Rect(0, max(0, rect.y0 - 150), page.rect.width, min(page.rect.height, rect.y1 + 150))
+                # Извлекаем текст рядом с картинкой (±200 пикселей по вертикали)
+                context_rect = fitz.Rect(
+                    0,
+                    max(0, rect.y0 - 200),
+                    page.rect.width,
+                    min(page.rect.height, rect.y1 + 200)
+                )
                 context_text = page.get_text("text", clip=context_rect).strip()
+                # Если контекст пустой — используем весь текст страницы
+                if not context_text:
+                    context_text = page_text_full
 
                 # Рендерим именно область картинки
                 try:
@@ -189,6 +251,26 @@ class PdfAiService:
                 
                 if step_data:
                     results.append(step_data)
+                    added_for_page = True
+
+            # Если ни одно изображение не дало шага — рендерим всю страницу как fallback
+            if not added_for_page and page_text_full:
+                logger.info(f"[PDF AI] Страница {page_number}: изображения не дали шага, fallback — вся страница")
+                try:
+                    pix = page.get_pixmap(matrix=matrix, alpha=False)
+                    png_bytes = pix.tobytes("png")
+                    step_data = await self._analyze_image_object(
+                        page_number=page_number,
+                        png_bytes=png_bytes,
+                        context_text=page_text_full,
+                        width=pix.width,
+                        height=pix.height,
+                        full_page=True,
+                    )
+                    if step_data:
+                        results.append(step_data)
+                except Exception as e:
+                    logger.warning(f"[PDF AI] Стр {page_number}: ошибка fallback рендеринга — {e}")
 
         doc.close()
         logger.info(f"[PDF AI] Найдено {len(results)} шагов")
@@ -200,13 +282,15 @@ class PdfAiService:
         png_bytes: bytes,
         context_text: str,
         width: int,
-        height: int
+        height: int,
+        full_page: bool = False,
     ) -> Optional[PdfStepData]:
         """Анализирует ОДИН конкретный скриншот ПО."""
         try:
             base64_image = base64.b64encode(png_bytes).decode("utf-8")
-            prompt = PDF_PAGE_ANALYSIS_PROMPT.format(
-                page_text=context_text[:3000] if context_text else "Контекст не найден."
+            template = PDF_FULL_PAGE_ANALYSIS_PROMPT if full_page else PDF_PAGE_ANALYSIS_PROMPT
+            prompt = template.format(
+                page_text=context_text[:4000] if context_text else "Контекст не найден."
             )
 
             completion = self.client.chat.completions.create(
@@ -244,24 +328,45 @@ class PdfAiService:
                 if not match: return None
                 data = json.loads(match.group(0))
 
+            # Пустой ответ (модель не нашла действие)
+            if not data:
+                logger.info(f"[PDF AI] Стр {page_number}: модель не нашла действие")
+                return None
+
             title = str(data.get("title") or "").strip()
             instruction_md = str(data.get("instruction_md") or "").strip()
-            if not title and not instruction_md: return None
+            if not title and not instruction_md:
+                return None
 
             inter = data.get("interaction") or data
             itype = _normalize_interaction_type(str(inter.get("type") or "left_click"))
             
             raw_bbox = inter.get("bbox")
             bbox = self._coerce_bbox(raw_bbox)
-            if not bbox: return None
+            if not bbox:
+                return None
             
             bbox = self._normalize_bbox_scale(bbox)
             x1, y1, x2, y2 = bbox
             bbox = [max(0.0, min(1.0, b)) for b in [min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)]]
 
+            # Фильтр слишком маленьких и слишком больших bbox
+            bw = bbox[2] - bbox[0]
+            bh = bbox[3] - bbox[1]
+            if bw < 0.005 or bh < 0.005:
+                logger.warning(f"[PDF AI] Стр {page_number}: bbox слишком мал ({bw:.3f}x{bh:.3f}), пропуск")
+                return None
+            if bw > 0.95 or bh > 0.95:
+                logger.warning(f"[PDF AI] Стр {page_number}: bbox слишком велик ({bw:.3f}x{bh:.3f}), пропуск")
+                return None
+
             expected_text = None
+            key_chord = None
             if itype == "text_input":
                 expected_text = str(inter.get("expected_text") or "").strip() or None
+            elif itype == "key_chord":
+                from services.video_ai_service import _normalize_key_chord as _nkc
+                key_chord = _nkc(inter.get("key_chord"))
 
             return PdfStepData(
                 page_number=page_number,
@@ -272,7 +377,8 @@ class PdfAiService:
                 page_width=width,
                 page_height=height,
                 action_type_key=itype,
-                expected_text=expected_text
+                expected_text=expected_text,
+                key_chord=key_chord,
             )
 
         except Exception as e:

@@ -7,6 +7,8 @@ export const useTrainingData = defineStore("training", () => {
 	const steps = ref(null);
 	const selectedStep = ref(null);
 	const selectedEvent = ref(null);
+	/** Индекс редактируемого поддействия (area.actions[i]) */
+	const stepActionEditIndex = ref(0);
 
 	const selectEvent = (val) => {
 		selectedEvent.value = val;
@@ -30,6 +32,7 @@ export const useTrainingData = defineStore("training", () => {
 
 	function selectStep(newStep) {
 		selectedStep.value = newStep;
+		stepActionEditIndex.value = 0;
 	}
 
 	return {
@@ -41,6 +44,7 @@ export const useTrainingData = defineStore("training", () => {
 		selectStep,
 		selectedStep,
 		selectEvent,
-		selectedEvent
+		selectedEvent,
+		stepActionEditIndex,
 	};
 });

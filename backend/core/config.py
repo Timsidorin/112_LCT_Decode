@@ -77,12 +77,40 @@ class Configs(BaseSettings):
     AI_BASE_URL: Optional[str] = Field(
         default="https://api.vsellm.ru/v1", env="AI_BASE_URL"
     )
+    # Instruct без «thinking»: быстрее и предсказуемее JSON для шагов (см. каталог VseLLM).
     AI_MODEL: Optional[str] = Field(
-        default="qwen/qwen3-vl-30b-a3b-thinking", env="AI_MODEL"
+        default="qwen/qwen3-vl-30b-a3b-instruct", env="AI_MODEL"
     )
-    AI_VIDEO_FPS: int = Field(default=4, env="AI_VIDEO_FPS")
+    # Сколько кадров в секунду «видит» VL-модель при разборе (больше — точнее быстрые клики, тяжелее запрос).
+    AI_VIDEO_FPS: int = Field(default=8, env="AI_VIDEO_FPS")
 
     AI_VIDEO_FPS_MAX: int = Field(default=12, env="AI_VIDEO_FPS_MAX")
+
+    # Перед отправкой в AI всегда собирать облегчённое видео (разрешение + разрежение кадров).
+    # Иначе в модель уходит полный исходник (десятки MB base64) — долго и хуже стабильность разбора UI.
+    AI_VIDEO_ALWAYS_ANALYSIS_PROXY: bool = Field(
+        default=True, env="AI_VIDEO_ALWAYS_ANALYSIS_PROXY"
+    )
+    AI_VIDEO_ANALYSIS_MAX_SIDE: int = Field(
+        default=960, env="AI_VIDEO_ANALYSIS_MAX_SIDE"
+    )
+    AI_VIDEO_ANALYSIS_ENCODE_FPS: int = Field(
+        default=6, env="AI_VIDEO_ANALYSIS_ENCODE_FPS"
+    )
+    AI_VIDEO_ANALYSIS_JPEG_QUALITY: int = Field(
+        default=54, env="AI_VIDEO_ANALYSIS_JPEG_QUALITY"
+    )
+
+    # Потолок размера base64 при отправке видео в AI (байты строки base64).
+    # Большие исходные файлы сжимаются в VideoCompressor; лимит нужен как страховка для API.
+    AI_VIDEO_MAX_BASE64_BYTES: int = Field(
+        default=250_000_000, env="AI_VIDEO_MAX_BASE64_BYTES"
+    )
+    # Целевой потолок до отправки в VL (меньше — быстрее и меньше 5xx у провайдера).
+    # Сжатие дожимает прокси, пока оценка base64 не станет не выше этого значения (и не выше MAX).
+    AI_VIDEO_SOFT_BASE64_BYTES: int = Field(
+        default=22_000_000, env="AI_VIDEO_SOFT_BASE64_BYTES"
+    )
 
     AI_VIDEO_FRAME_OFFSET_SEC: float = Field(
         default=0.10, env="AI_VIDEO_FRAME_OFFSET_SEC"

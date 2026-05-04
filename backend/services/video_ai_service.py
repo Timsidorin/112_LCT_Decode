@@ -103,8 +103,16 @@ FALLBACK_ANALYSIS_PROMPT = """
 - steps непустой.
 """
 
-# Лимит на base64-строку в байтах (26 MB < 28 MB лимита API с запасом)
-MAX_BASE64_BYTES = 26_000_000
+REPAIR_JSON_PROMPT = """
+Предыдущий ответ не удалось разобрать как JSON. Проанализируй то же видео ещё раз.
+Верни ТОЛЬКО один JSON-объект без markdown и текста до/после:
+
+{"steps":[{"timecode_before":"M:SS","timecode_after":"M:SS","title":"…","instruction_md":"…","interaction":{"type":"left_click","bbox":[0.1,0.2,0.15,0.25]}}]}
+
+Обязательно: timecode_before, timecode_after, title, instruction_md, interaction.type, interaction.bbox как четыре числа 0..1 (доли ширины/высоты кадра).
+Минимум один шаг. bbox строго внутри 0..1.
+"""
+
 # Максимальная сторона кадра при масштабировании
 MAX_FRAME_SIDE = 1280
 # Целевой FPS для сжатого видео
@@ -199,8 +207,44 @@ class VideoCompressor:
     4. Дополнительное снижение FPS
     """
 
-    # Лимит base64-строки в байтах
-    MAX_BASE64_BYTES: int = MAX_BASE64_BYTES
+    def __init__(self, max_base64_bytes: int) -> None:
+        self.MAX_BASE64_BYTES = max(1, int(max_base64_bytes))
+
+    @staticmethod
+    def _estimate_b64_size(file_path: str) -> int:
+        return (os.path.getsize(file_path) * 4) // 3
+
+    def build_analysis_proxy(self, video_path: str) -> str:
+        """
+        Облегчённая копия для VL: ограничение по стороне и FPS в файле.
+        Длительность и таймкоды в секундах совпадают с оригиналом (только прореживание кадров).
+        """
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Не удалось открыть видео для подготовки анализа",
+            )
+        src_fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
+        cap.release()
+
+        want_fps = max(1, int(configs.AI_VIDEO_ANALYSIS_ENCODE_FPS))
+        target_fps = min(want_fps, max(1, int(round(src_fps))))
+        max_side = max(320, int(configs.AI_VIDEO_ANALYSIS_MAX_SIDE))
+        jpeg_q = max(30, min(95, int(configs.AI_VIDEO_ANALYSIS_JPEG_QUALITY)))
+
+        out = self._encode_video(
+            video_path,
+            target_fps=target_fps,
+            max_side=max_side,
+            jpeg_quality=jpeg_q,
+        )
+        est_kb = self._estimate_b64_size(out) // 1024
+        logger.info(
+            f"Анализ-прокси для AI: ~{est_kb}KB base64, "
+            f"{max_side}px max, {target_fps}fps в файле (исходник был {src_fps:.1f}fps)"
+        )
+        return out
 
     def compress_video(self, video_path: str) -> Tuple[str, float, float]:
         """
@@ -210,9 +254,10 @@ class VideoCompressor:
             (compressed_path, original_fps, compressed_fps)
             compressed_path может совпадать с video_path если сжатие не нужно.
         """
-        # Проверяем исходный размер
-        original_size = os.path.getsize(video_path)
-        original_b64_size = (original_size * 4) // 3  # приблизительный размер base64
+        original_b64_size = self._estimate_b64_size(video_path)
+
+        soft = max(1, int(getattr(configs, "AI_VIDEO_SOFT_BASE64_BYTES", 18_000_000)))
+        effective_limit = min(self.MAX_BASE64_BYTES, soft)
 
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -227,15 +272,16 @@ class VideoCompressor:
         orig_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         cap.release()
 
-        if original_b64_size <= self.MAX_BASE64_BYTES:
+        if original_b64_size <= effective_limit:
             logger.info(
-                f"Видео не требует сжатия: ~{original_b64_size // 1024}KB base64"
+                f"Видео не требует сжатия: ~{original_b64_size // 1024}KB base64 "
+                f"(потолок ~{effective_limit // 1024}KB)"
             )
             return video_path, original_fps, original_fps
 
         logger.info(
             f"Видео требует сжатия: ~{original_b64_size // 1024}KB base64 "
-            f"(лимит {self.MAX_BASE64_BYTES // 1024}KB). "
+            f"(потолок ~{effective_limit // 1024}KB). "
             f"Исходное: {orig_width}x{orig_height} @ {original_fps:.1f}fps, "
             f"{total_frames} кадров"
         )
@@ -247,29 +293,59 @@ class VideoCompressor:
             orig_height=orig_height,
             total_frames=total_frames,
             original_b64_size=original_b64_size,
+            size_limit=effective_limit,
         )
 
         compressed_path = self._encode_video(video_path, **params)
-
-        # Проверяем результат
-        compressed_b64 = (os.path.getsize(compressed_path) * 4) // 3
+        compressed_b64 = self._estimate_b64_size(compressed_path)
         logger.info(
-            f"Сжатое видео: ~{compressed_b64 // 1024}KB base64, "
-            f"params={params}"
+            f"Сжатое видео: ~{compressed_b64 // 1024}KB base64, params={params}"
         )
 
-        if compressed_b64 > self.MAX_BASE64_BYTES:
-            logger.warning(
-                "Сжатое видео всё ещё превышает лимит, применяем агрессивное сжатие"
-            )
-            os.unlink(compressed_path)
-            params["target_fps"] = max(1, params["target_fps"] // 2)
-            params["jpeg_quality"] = max(30, params["jpeg_quality"] - 20)
-            params["max_side"] = max(640, params["max_side"] - 320)
-            compressed_path = self._encode_video(video_path, **params)
+        orig_max_side = max(orig_width, orig_height)
+        iteration = 0
+        while compressed_b64 > effective_limit:
+            iteration += 1
+            overshoot = compressed_b64 / float(effective_limit)
+            if overshoot <= 1.02:
+                break
 
-            final_b64 = (os.path.getsize(compressed_path) * 4) // 3
-            logger.info(f"После агрессивного сжатия: ~{final_b64 // 1024}KB base64")
+            at_minimum = (
+                params["target_fps"] <= 1
+                and params["jpeg_quality"] <= 22
+                and params["max_side"] <= 256
+            )
+            if at_minimum:
+                logger.warning(
+                    "Минимум параметров сжатия, файл всё ещё выше потолка — "
+                    "останавливаем локальное сжатие (дальше сработает дожим при отправке)"
+                )
+                break
+
+            old_path = compressed_path
+            shrink = min(max(overshoot**0.42, 1.15), 2.85)
+
+            params["target_fps"] = max(1, int(params["target_fps"] / shrink))
+            params["jpeg_quality"] = max(
+                22, int(params["jpeg_quality"] / (shrink**0.38))
+            )
+            params["max_side"] = max(256, int(params["max_side"] / (shrink**0.42)))
+            if params["max_side"] > orig_max_side:
+                params["max_side"] = orig_max_side
+            if params["target_fps"] > original_fps:
+                params["target_fps"] = max(1, int(original_fps))
+
+            if old_path != video_path:
+                os.unlink(old_path)
+
+            compressed_path = self._encode_video(video_path, **params)
+            compressed_b64 = self._estimate_b64_size(compressed_path)
+            logger.info(
+                f"Сжатие #{iteration} (превышение ×{overshoot:.2f}): "
+                f"~{compressed_b64 // 1024}KB base64, params={params}"
+            )
+            if iteration >= 7:
+                break
 
         return compressed_path, original_fps, float(params["target_fps"])
 
@@ -280,9 +356,10 @@ class VideoCompressor:
         orig_height: int,
         total_frames: int,
         original_b64_size: int,
+        size_limit: int,
     ) -> Dict[str, Any]:
         """Выбирает оптимальные параметры сжатия на основе коэффициента."""
-        ratio = original_b64_size / self.MAX_BASE64_BYTES
+        ratio = original_b64_size / max(1, size_limit)
 
         # Базовые параметры
         target_fps = COMPRESSED_FPS
@@ -449,7 +526,7 @@ class VideoAIService:
         self.model = configs.AI_MODEL
         self.fps = configs.AI_VIDEO_FPS
         self.fps_max = max(1, int(configs.AI_VIDEO_FPS_MAX or 12))
-        self.compressor = VideoCompressor()
+        self.compressor = VideoCompressor(configs.AI_VIDEO_MAX_BASE64_BYTES)
 
     def _effective_api_fps(self) -> int:
         return max(1, min(int(round(float(self.fps or 1))), self.fps_max))
@@ -458,7 +535,7 @@ class VideoAIService:
         """
         Полный пайплайн:
         1. Сохраняет видео во временный файл
-        2. Сжимает видео если превышен лимит API
+        2. При необходимости — анализ-прокси и сжатие под лимит API
         3. Отправляет в AI-модель для анализа
         4. Парсит ответ (шаги, bbox, типы действий)
         5. Извлекает кадры из ОРИГИНАЛЬНОГО видео по таймкодам
@@ -472,57 +549,87 @@ class VideoAIService:
             original_path = tmp.name
 
         compressed_path: Optional[str] = None
+        proxy_path: Optional[str] = None
 
         try:
-            # Сжимаем для отправки в API
-            compressed_path, original_fps, compressed_fps = (
-                self.compressor.compress_video(original_path)
+            work_path = original_path
+            if configs.AI_VIDEO_ALWAYS_ANALYSIS_PROXY:
+                try:
+                    proxy_path = self.compressor.build_analysis_proxy(original_path)
+                    work_path = proxy_path
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    logger.warning(
+                        f"Не удалось подготовить анализ-прокси, используем исходник: {e}"
+                    )
+
+            compressed_path, source_file_fps, delivery_fps = (
+                self.compressor.compress_video(work_path)
             )
 
-            is_compressed = compressed_path != original_path
             send_path = compressed_path
-
+            api_fps = self._effective_api_fps()
             logger.info(
-                f"Отправка в AI: {'сжатое' if is_compressed else 'оригинальное'} видео, "
-                f"fps={compressed_fps}"
+                f"Отправка в AI: прокси={'да' if proxy_path else 'нет'}, "
+                f"вход_compress={'прокси' if proxy_path and work_path == proxy_path else 'оригинал'}, "
+                f"fps {source_file_fps:.1f}→{delivery_fps:.1f}, api_fps={api_fps}"
             )
 
-            api_fps = self._effective_api_fps()
             ai_response = self._call_ai_model(
                 send_path,
                 fps=api_fps,
-                max_tokens=4800,
-                original_fps=original_fps,
-                compressed_fps=compressed_fps,
+                max_tokens=6000,
+                original_fps=source_file_fps,
+                compressed_fps=delivery_fps,
             )
             steps_payload = self._parse_ai_response(ai_response)
 
             if not steps_payload:
                 logger.warning(
-                    "Первичный ответ AI не дал валидных шагов, запускаем fallback"
+                    f"Первичный ответ AI без валидных шагов — fallback. "
+                    f"Фрагмент: {repr((ai_response or '')[:800])}"
                 )
                 ai_response = self._call_ai_model(
                     send_path,
                     prompt=FALLBACK_ANALYSIS_PROMPT,
                     fps=api_fps,
                     max_tokens=6400,
-                    original_fps=original_fps,
-                    compressed_fps=compressed_fps,
+                    original_fps=source_file_fps,
+                    compressed_fps=delivery_fps,
                 )
                 steps_payload = self._parse_ai_response(ai_response)
                 if not steps_payload:
+                    logger.warning(
+                        f"Fallback без шагов, фрагмент: {repr((ai_response or '')[:800])}"
+                    )
+                    logger.warning(
+                        "Запрос repair: компактный JSON шагов (тот же ролик)"
+                    )
+                    ai_response = self._call_ai_model(
+                        send_path,
+                        prompt=REPAIR_JSON_PROMPT,
+                        fps=api_fps,
+                        max_tokens=6000,
+                        original_fps=source_file_fps,
+                        compressed_fps=delivery_fps,
+                    )
+                    steps_payload = self._parse_ai_response(ai_response)
+                if not steps_payload:
                     raise HTTPException(
                         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                        detail="AI-модель не смогла распознать действия в видео",
+                        detail=(
+                            "AI не вернула пригодный список шагов (JSON/bbox). "
+                            "Проверьте логи: фрагмент ответа записан уровнем WARNING."
+                        ),
                     )
 
-            # Если видео было сжато, нужно скорректировать таймкоды
-            # (compressed_fps может отличаться от original_fps)
-            if is_compressed and compressed_fps != original_fps:
+            is_compressed = compressed_path != original_path
+            if is_compressed and delivery_fps != source_file_fps:
                 steps_payload = self._remap_timecodes(
                     steps_payload,
-                    compressed_fps=compressed_fps,
-                    original_fps=original_fps,
+                    compressed_fps=delivery_fps,
+                    original_fps=source_file_fps,
                     original_path=original_path,
                 )
 
@@ -533,11 +640,17 @@ class VideoAIService:
             return results
 
         finally:
-            if os.path.exists(original_path):
-                os.unlink(original_path)
-            if compressed_path and compressed_path != original_path:
-                if os.path.exists(compressed_path):
-                    os.unlink(compressed_path)
+            cleanup_paths = {original_path}
+            if proxy_path:
+                cleanup_paths.add(proxy_path)
+            if compressed_path:
+                cleanup_paths.add(compressed_path)
+            for p in cleanup_paths:
+                if p and os.path.exists(p):
+                    try:
+                        os.unlink(p)
+                    except OSError:
+                        pass
 
     def _remap_timecodes(
         self,
@@ -578,36 +691,46 @@ class VideoAIService:
         дополнительно сжимает.
         """
         mime, base64_video = self.compressor.read_as_base64(video_path)
+        limit = self.compressor.MAX_BASE64_BYTES
 
-        # Финальная проверка — если всё ещё превышает лимит
-        if len(base64_video) > MAX_BASE64_BYTES:
-            logger.error(
-                f"Base64 ({len(base64_video) // 1024}KB) всё ещё превышает лимит "
-                f"({MAX_BASE64_BYTES // 1024}KB) после сжатия. "
-                "Пробуем с минимальными параметрами."
+        # Финальная проверка — дополнительные ступени перекодирования под потолок API
+        if len(base64_video) > limit:
+            logger.warning(
+                f"Base64 ({len(base64_video) // 1024}KB) выше потолка ({limit // 1024}KB), "
+                "пробуем дополнительные профили сжатия."
             )
-            # Аварийное сжатие: 1fps, 640px, качество 35
-            emergency_path = self.compressor._encode_video(
-                video_path,
-                target_fps=1,
-                max_side=640,
-                jpeg_quality=35,
-            )
-            try:
-                mime, base64_video = self.compressor.read_as_base64(emergency_path)
-                if len(base64_video) > MAX_BASE64_BYTES:
-                    raise HTTPException(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        detail=(
-                            f"Видео слишком большое для обработки AI. "
-                            f"Размер после максимального сжатия: "
-                            f"{len(base64_video) // 1024 // 1024}MB. "
-                            "Пожалуйста, загрузите более короткое видео (до 5 минут)."
-                        ),
-                    )
-            finally:
-                if os.path.exists(emergency_path):
-                    os.unlink(emergency_path)
+            emergency_tiers = [
+                (1, 640, 35),
+                (1, 480, 30),
+                (1, 400, 28),
+                (1, 320, 25),
+                (1, 256, 22),
+                (1, 256, 20),
+            ]
+            for tier_fps, tier_side, tier_q in emergency_tiers:
+                emergency_path = self.compressor._encode_video(
+                    video_path,
+                    target_fps=tier_fps,
+                    max_side=tier_side,
+                    jpeg_quality=tier_q,
+                )
+                try:
+                    mime, base64_video = self.compressor.read_as_base64(emergency_path)
+                    if len(base64_video) <= limit:
+                        break
+                finally:
+                    if os.path.exists(emergency_path):
+                        os.unlink(emergency_path)
+
+            if len(base64_video) > limit:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=(
+                        "Не удалось уложить видео в допустимый размер для AI даже при "
+                        "минимальном качестве. Попробуйте более короткий ролик или "
+                        "уменьшите разрешение исходной записи."
+                    ),
+                )
 
         effective_fps = fps if fps is not None else self._effective_api_fps()
 
@@ -616,28 +739,60 @@ class VideoAIService:
             f"api_fps={effective_fps}, model={self.model}"
         )
 
-        completion = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "video_url",
-                            "video_url": {
-                                "url": f"data:{mime};base64,{base64_video}"
+        try:
+            completion = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "video_url",
+                                "video_url": {
+                                    "url": f"data:{mime};base64,{base64_video}"
+                                },
+                                "fps": effective_fps,
                             },
-                            "fps": effective_fps,
-                        },
-                        {"type": "text", "text": prompt or ANALYSIS_PROMPT},
-                    ],
-                }
-            ],
-            max_tokens=max_tokens if max_tokens is not None else 8000,
-            temperature=0.0,
-        )
+                            {"type": "text", "text": prompt or ANALYSIS_PROMPT},
+                        ],
+                    }
+                ],
+                max_tokens=max_tokens if max_tokens is not None else 8000,
+                temperature=0.0,
+            )
+        except Exception as e:
+            logger.exception(
+                f"Запрос к провайдеру AI для видео завершился ошибкой (model={self.model})"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "Провайдер AI не обработал видео. Проверьте API-ключ, квоты и название "
+                    f"модели в AI_MODEL. Детали: {str(e)}"
+                ),
+            ) from e
 
-        return completion.choices[0].message.content
+        content = completion.choices[0].message.content
+        if content is None:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Провайдер AI вернул пустой ответ при разборе видео.",
+            )
+        return content
+
+    @staticmethod
+    def _strip_model_noise(text: str) -> str:
+        """Убирает типичные обёртки моделей, мешающие json.loads."""
+        if not text:
+            return ""
+        t = text.strip()
+        t = re.sub(
+            r"<(?:redacted_)?thinking>[\s\S]*?</(?:redacted_)?thinking>",
+            "",
+            t,
+            flags=re.IGNORECASE,
+        )
+        return t.strip()
 
     def _parse_ai_response(self, raw_response: str) -> List[Dict[str, Any]]:
         """
@@ -645,7 +800,7 @@ class VideoAIService:
         - новый формат: {"steps": [...]}
         - устаревший: {"00:00": {"question", "bbox"}}
         """
-        text = raw_response.strip()
+        text = self._strip_model_noise(raw_response)
 
         code_block = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
         if code_block:
@@ -808,21 +963,37 @@ class VideoAIService:
             bbox = self._normalize_bbox_scale(bbox)
             x1, y1, x2, y2 = bbox
             bbox = [min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)]
-            bbox = [max(0.0, min(1.0, b)) for b in bbox]
-            width = bbox[2] - bbox[0]
-            height = bbox[3] - bbox[1]
-            if width <= 0 or height <= 0:
-                continue
-            if width < 0.005 or height < 0.005:
-                logger.warning(
-                    f"Шаг {timecode_before}: bbox очень маленький, пропуск"
-                )
-                continue
-            if width > 0.95 or height > 0.95:
-                logger.warning(
-                    f"Шаг {timecode_before}: bbox слишком большой, пропуск"
-                )
-                continue
+
+            is_norm = all(0.0 <= b <= 1.0 for b in bbox)
+            if is_norm:
+                bbox = [max(0.0, min(1.0, b)) for b in bbox]
+                width = bbox[2] - bbox[0]
+                height = bbox[3] - bbox[1]
+                if width <= 0 or height <= 0:
+                    continue
+                if width < 0.005 or height < 0.005:
+                    logger.warning(
+                        f"Шаг {timecode_before}: bbox очень маленький, пропуск"
+                    )
+                    continue
+                if width > 0.95 or height > 0.95:
+                    logger.warning(
+                        f"Шаг {timecode_before}: bbox слишком большой, пропуск"
+                    )
+                    continue
+            else:
+                width = bbox[2] - bbox[0]
+                height = bbox[3] - bbox[1]
+                if width < 2.0 or height < 2.0:
+                    logger.warning(
+                        f"Шаг {timecode_before}: bbox в пикселях слишком мал, пропуск"
+                    )
+                    continue
+                if width > 8192 or height > 8192:
+                    logger.warning(
+                        f"Шаг {timecode_before}: bbox в пикселях нереалистичен, пропуск"
+                    )
+                    continue
 
             if itype == "text_input":
                 if expected_text is not None:
