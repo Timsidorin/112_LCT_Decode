@@ -33,7 +33,6 @@ from schemas.trainings import (
     TrainingStepUpdate,
     TrainingUpdate,
 )
-from services.BatchVideo_service import BatchVideoService
 from services.external_services.s3_service import S3Service
 from services.video_ai_service import VideoAIService
 from services.pdf_ai_service import PdfAiService
