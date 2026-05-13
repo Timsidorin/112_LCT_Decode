@@ -61,15 +61,30 @@ export class BaseApi {
                 return this._headers;
         }
 
-        async request() {
+        async createRequest() {
+                const token = typeof localStorage !== "undefined"
+                        ? localStorage.getItem("tokenAuth")
+                        : null;
+                const headers = { ...(this._headers || {}) };
+                if (token) {
+                        headers.Authorization = `Bearer ${token}`;
+                }
                 try {
-                        const response = await this._axiosInstance({
+                        return await this._axiosInstance({
                                 method: this._httpMethod,
                                 url: this._sourceUrl,
                                 data: this._data,
                                 params: this._params,
-                                headers: this._headers
+                                headers: Object.keys(headers).length ? headers : undefined,
                         });
+                } finally {
+                        this._headers = {};
+                }
+        }
+
+        async request() {
+                try {
+                        const response = await this.createRequest();
                         return response.data;
                 } catch (error) {
                         throw error;
