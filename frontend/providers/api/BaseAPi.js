@@ -70,17 +70,17 @@ export class BaseApi {
 	}
 
 	async createRequest() {
-		if (this.axiosInstance) {
-			return await this.axiosInstance({
-				url: this.baseUrl + this.sourceUrl,
-				method: this.httpMethod,
-				params: { ...this.params },
-				data: this.data,
-				headers: {
-					...this.headers,
-					...{ Authorization: `Bearer ${localStorage.getItem("tokenAuth")}` },
-				},
-			});
-		}
-	}
+    if (this.axiosInstance) {
+        return await this.axiosInstance({
+            url: this.sourceUrl,   // только relative path
+            method: this.httpMethod,
+            params: { ...this.params },
+            data: this.data,
+            headers: {
+                ...this.headers,
+                ...{ Authorization: `Bearer ${localStorage.getItem("tokenAuth")}` },
+            },
+        });
+    }
+}
 }

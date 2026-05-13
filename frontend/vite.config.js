@@ -9,7 +9,7 @@ export default defineConfig({
     quasar(),
   ],
   define: {
-    __BASE__URL__: JSON.stringify('https://ripely-receiving-shelduck.cloudpub.ru')
+    __BASE__URL__: JSON.stringify('/api')
   },
   resolve: {
     alias: {
@@ -24,6 +24,6 @@ export default defineConfig({
     }
   },
   server: {
-    allowedHosts: ['ungraciously-relishing-char.cloudpub.ru', 'righteously-ladylike-nightjar.cloudpub.ru']
+    allowedHosts: ['http://109.196.99.95']
   }
 });

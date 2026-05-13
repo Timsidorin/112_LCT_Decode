@@ -6,8 +6,6 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: frontend
-    ports:
-      - "80:80"
     networks:
       - app-network
     restart: unless-stopped
@@ -19,8 +17,6 @@ services:
       context: ./backend
       dockerfile: dockerfile
     container_name: backend
-    ports:
-      - "8001:8001"
     environment:
       - DB_HOST=db
       - DB_PORT=5432
@@ -56,6 +52,35 @@ services:
     networks:
       - app-network
     restart: unless-stopped
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot
+    volumes:
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+    depends_on:
+      - nginx
+    networks:
+      - app-network
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 volumes:
   postgres_data:
