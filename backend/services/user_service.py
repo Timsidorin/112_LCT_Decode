@@ -1,11 +1,10 @@
 from typing import Optional
 
 from fastapi import BackgroundTasks, HTTPException, status
-from jose import jwt
 from pydantic import EmailStr
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import configs
+from models.users import User as UserModel
 from repositories.users_repository import UserRepository
 from schemas import mail
 from schemas.mail import mail_send
@@ -20,25 +19,22 @@ from utils.security import (
 
 
 class UserService:
-    def __init__(self, repo: UserRepository, email_service: EmailService):
+    def __init__(self, repo: UserRepository):
         self.user_repo = repo
-        self.email_service = email_service
 
     async def register(
-        self, user_data: UserRegister, background_tasks: BackgroundTasks
+        self, user_data: UserRegister
     ) -> bool:
-        mail = mail_send(
-            email=user_data.email,
-            subject=f"Добро пожаловать в {configs.PROJECT_NAME}!",
-            body=f"Вы успешно зарегистрированы в {configs.PROJECT_NAME}!",
-        )
-        background_tasks.add_task(self.email_service.send_email, mail)
         return await self.user_repo.add_user(user_data)
 
     async def authenticate(self, email: EmailStr, password: str):
         user = await self.user_repo.find_one_or_none(email=email)
-        if not user or not verify_password(
-            plain_password=password, hashed_password=user.password
+        if (
+            not user
+            or not user.password
+            or not verify_password(
+                plain_password=password, hashed_password=user.password
+            )
         ):
             return None
         return user
@@ -64,3 +60,62 @@ class UserService:
         if user is None:
             return None
         return UserResponse.model_validate(user)
+
+    async def get_or_create_vk_user(
+        self,
+        vk_id: int,
+        email_from_vk: Optional[str],
+        first_name: str,
+        last_name: str,
+        photo: Optional[str],
+    ) -> UserModel:
+        existing = await self.user_repo.find_by_vk_id(vk_id)
+        if existing:
+            u = await self.user_repo.update_user(
+                existing.id,
+                {
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "photo": photo,
+                },
+            )
+            if u:
+                return u
+            return await self.user_repo.get_by_id(existing.id)
+
+        if email_from_vk:
+            by_email = await self.user_repo.find_one_or_none(email_from_vk)
+            if by_email:
+                if by_email.vk_id is None or by_email.vk_id == vk_id:
+                    u2 = await self.user_repo.update_user(
+                        by_email.id,
+                        {
+                            "vk_id": vk_id,
+                            "first_name": first_name,
+                            "last_name": last_name,
+                            "photo": photo or by_email.photo,
+                        },
+                    )
+                    if u2:
+                        return u2
+                    return await self.user_repo.get_by_id(by_email.id)
+
+        new_email = f"vk_{vk_id}@vk.oauth.local"
+        if email_from_vk and not await self.user_repo.find_one_or_none(
+            email_from_vk
+        ):
+            new_email = email_from_vk
+
+        db_user = UserModel(
+            email=new_email,
+            vk_id=vk_id,
+            password=None,
+            phone_number=None,
+            first_name=first_name,
+            last_name=last_name,
+            photo=photo,
+        )
+        self.user_repo.session.add(db_user)
+        await self.user_repo.session.commit()
+        await self.user_repo.session.refresh(db_user)
+        return db_user

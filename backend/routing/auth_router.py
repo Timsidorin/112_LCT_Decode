@@ -1,11 +1,15 @@
 from typing import Optional
+from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, Form, HTTPException
+from fastapi import APIRouter, Body, Depends, Form, HTTPException
+from fastapi.responses import RedirectResponse
 from starlette import status
 
+from core.config import configs
 from depends import get_user_service, oauth2_scheme
-from schemas.users import User, UserLogin, UserRegister, UserResponse
+from schemas.users import UserLogin, UserRegister, UserResponse
 from services.user_service import UserService
+from utils.security import create_access_token, decode_access_token
 
 router = APIRouter(
     prefix="/auth",
@@ -16,10 +20,9 @@ router = APIRouter(
 @router.post("/register", name="регистрация пользователя")
 async def register_user(
     user_data: UserRegister,
-    background_tasks: BackgroundTasks,
     user_service: UserService = Depends(get_user_service),
 ) -> None:
-    if await user_service.register(user_data, background_tasks):
+    if await user_service.register(user_data):
         raise HTTPException(
             status_code=200,
             detail="Вы успешно зарегистрированы! На ваш email отправлено письмо.",
@@ -63,4 +66,11 @@ async def get_user(
     user_service: UserService = Depends(get_user_service),
 ) -> UserResponse:
     current_user = await user_service.get_current_user(token)
+    if current_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Не удалось загрузить пользователя",
+        )
     return current_user
+
+
