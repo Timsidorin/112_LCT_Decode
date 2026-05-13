@@ -30,6 +30,11 @@ import { useQuasar } from "quasar";
 import { trainingStepApi } from "@api";
 import { useTrainingData } from "@store/editTraining.js";
 import { eventRequiresAreaCoordinates } from "@utils/actionTypes.js";
+import {
+	getExplicitActions,
+	buildAreaWithActions,
+	findToolbarEventById,
+} from "@utils/stepActionSequence.js";
 import InputText from "@components/features/edit_page/InputText.vue";
 import WatchKey from "@components/features/edit_page/WatchKey.vue";
 
@@ -41,10 +46,29 @@ const store = useTrainingData();
 const getAreaForSave = inject("getAreaForSave", () => null);
 const isHotkeyDialogOpen = ref(false);
 
+function currentActionSlice() {
+	const s = store.selectedStep;
+	if (!s?.area) return null;
+	const acts = s.area?.actions;
+	if (!Array.isArray(acts) || acts.length === 0) return null;
+	const i = Math.min(Math.max(0, store.stepActionEditIndex ?? 0), acts.length - 1);
+	if (!acts[i] || typeof acts[i] !== "object") acts[i] = {};
+	return acts[i];
+}
+
 // ── metaText ──────────────────────────────────────────────────────────────
 const metaText = computed({
-	get() { return store.selectedStep?.area?.metaText || ''; },
+	get() {
+		const sl = currentActionSlice();
+		if (sl) return sl.metaText || "";
+		return store.selectedStep?.area?.metaText || "";
+	},
 	set(value) {
+		const sl = currentActionSlice();
+		if (sl) {
+			sl.metaText = value;
+			return;
+		}
 		ensureArea();
 		store.selectedStep.area.metaText = value;
 	},
@@ -53,23 +77,39 @@ const metaText = computed({
 // ── metaFontSize (прямые пиксели, 10–72) ──────────────────────────────────
 const metaFontSize = computed({
 	get() {
-		const raw = Number(store.selectedStep?.area?.metaFontSize);
+		const sl = currentActionSlice();
+		const base = sl || store.selectedStep?.area || {};
+		const raw = Number(base.metaFontSize);
 		if (Number.isFinite(raw) && raw >= 8) return Math.round(raw);
-		// Обратная совместимость: если есть старый metaTextScale — конвертируем
-		const oldScale = Number(store.selectedStep?.area?.metaTextScale);
+		const oldScale = Number(base.metaTextScale);
 		if (Number.isFinite(oldScale) && oldScale > 0) return Math.round(14 * oldScale);
 		return DEFAULT_FONT_SIZE;
 	},
 	set(value) {
+		const v = Math.max(8, Math.min(72, Math.round(value)));
+		const sl = currentActionSlice();
+		if (sl) {
+			sl.metaFontSize = v;
+			return;
+		}
 		ensureArea();
-		store.selectedStep.area.metaFontSize = Math.max(8, Math.min(72, Math.round(value)));
+		store.selectedStep.area.metaFontSize = v;
 	},
 });
 
 // ── metaKeywords ───────────────────────────────────────────────────────────
 const metaKeywords = computed({
-	get() { return store.selectedStep?.area?.metaKeywords || []; },
+	get() {
+		const sl = currentActionSlice();
+		if (sl) return sl.metaKeywords || [];
+		return store.selectedStep?.area?.metaKeywords || [];
+	},
 	set(value) {
+		const sl = currentActionSlice();
+		if (sl) {
+			sl.metaKeywords = value;
+			return;
+		}
 		ensureArea();
 		store.selectedStep.area.metaKeywords = value;
 	},
@@ -77,20 +117,56 @@ const metaKeywords = computed({
 
 // ── metaMatchMode ('exact' | 'regex') ─────────────────────────────────────
 const metaMatchMode = computed({
-	get() { return store.selectedStep?.area?.metaMatchMode || 'exact'; },
-	set(v) { ensureArea(); store.selectedStep.area.metaMatchMode = v; },
+	get() {
+		const sl = currentActionSlice();
+		if (sl) return sl.metaMatchMode || "exact";
+		return store.selectedStep?.area?.metaMatchMode || "exact";
+	},
+	set(v) {
+		const sl = currentActionSlice();
+		if (sl) {
+			sl.metaMatchMode = v;
+			return;
+		}
+		ensureArea();
+		store.selectedStep.area.metaMatchMode = v;
+	},
 });
 
 // ── metaPattern (regex string) ────────────────────────────────────────────
 const metaPattern = computed({
-	get() { return store.selectedStep?.area?.metaPattern || ''; },
-	set(v) { ensureArea(); store.selectedStep.area.metaPattern = v; },
+	get() {
+		const sl = currentActionSlice();
+		if (sl) return sl.metaPattern || "";
+		return store.selectedStep?.area?.metaPattern || "";
+	},
+	set(v) {
+		const sl = currentActionSlice();
+		if (sl) {
+			sl.metaPattern = v;
+			return;
+		}
+		ensureArea();
+		store.selectedStep.area.metaPattern = v;
+	},
 });
 
 // ── metaPatternPreset ('any'|'email'|'phone'|'number'|'date'|'custom') ────
 const metaPatternPreset = computed({
-	get() { return store.selectedStep?.area?.metaPatternPreset || 'any'; },
-	set(v) { ensureArea(); store.selectedStep.area.metaPatternPreset = v; },
+	get() {
+		const sl = currentActionSlice();
+		if (sl) return sl.metaPatternPreset || "any";
+		return store.selectedStep?.area?.metaPatternPreset || "any";
+	},
+	set(v) {
+		const sl = currentActionSlice();
+		if (sl) {
+			sl.metaPatternPreset = v;
+			return;
+		}
+		ensureArea();
+		store.selectedStep.area.metaPatternPreset = v;
+	},
 });
 
 const selectedMode = computed(() => props.node?.data?.type);
@@ -154,34 +230,66 @@ function autoExpand(txt) {
 	props.node.style = { ...(props.node.style || {}), width: `${newW}px`, height: `${newH}px` };
 }
 
+function buildPayloadArea(rectOverride) {
+	const step = store.selectedStep;
+	const ev = store.selectedEvent;
+	if (!step?.id || !ev?.id) return null;
+	const seq = getExplicitActions(step);
+	const meta = {
+		metaText: metaText.value,
+		metaKeywords: metaKeywords.value,
+		metaFontSize: metaFontSize.value,
+		metaMatchMode: metaMatchMode.value,
+		metaPattern: metaPattern.value,
+		metaPatternPreset: metaPatternPreset.value,
+	};
+	const rect = rectOverride || getAreaForSave?.() || {};
+	if (seq?.length) {
+		const idx = Math.min(
+			Math.max(0, store.stepActionEditIndex ?? 0),
+			seq.length - 1
+		);
+		const actions = seq.map((x) => ({ ...x }));
+		const prev = actions[idx] || {};
+		actions[idx] = {
+			...prev,
+			action_type_id: ev.id,
+			...rect,
+			...meta,
+		};
+		return {
+			action_type_id: actions[0].action_type_id,
+			area: buildAreaWithActions(actions, step.area),
+		};
+	}
+	return {
+		action_type_id: ev.id,
+		area: { ...rect, ...meta },
+	};
+}
+
 // ── Сохранение ────────────────────────────────────────────────────────────
 async function saveAll() {
-	const eventType = store.selectedEvent;
-	if (!eventType || !store.trainingData?.uuid || !store.selectedStep?.id) return;
-	const area = getAreaForSave?.() ?? {};
+	if (!store.trainingData?.uuid || !store.selectedStep?.id) return;
+	const body = buildPayloadArea();
+	if (!body) return;
 	try {
-		await trainingStepApi.editStep(store.trainingData.uuid, store.selectedStep.id, {
-			action_type_id: eventType.id,
-			area: {
-				...area,
-				metaText: metaText.value,
-				metaKeywords: metaKeywords.value,
-				metaFontSize: metaFontSize.value,
-				metaMatchMode: metaMatchMode.value,
-				metaPattern: metaPattern.value,
-				metaPatternPreset: metaPatternPreset.value,
-			}
-		});
+		await trainingStepApi.editStep(
+			store.trainingData.uuid,
+			store.selectedStep.id,
+			body
+		);
 		ensureArea();
-		Object.assign(store.selectedStep.area, {
-			...area,
-			metaText: metaText.value,
-			metaKeywords: metaKeywords.value,
-			metaFontSize: metaFontSize.value,
-			metaMatchMode: metaMatchMode.value,
-			metaPattern: metaPattern.value,
-			metaPatternPreset: metaPatternPreset.value,
-		});
+		Object.assign(store.selectedStep.area, body.area);
+		store.selectedStep.action_type = {
+			...findToolbarEventById(body.action_type_id),
+		};
+		const stepInList = store.steps?.find((s) => s.id === store.selectedStep.id);
+		if (stepInList) {
+			if (!stepInList.area) stepInList.area = {};
+			Object.assign(stepInList.area, body.area);
+			stepInList.action_type = { ...findToolbarEventById(body.action_type_id) };
+		}
 	} catch {
 		// тихо игнорируем
 	}
@@ -192,29 +300,21 @@ async function onResizeEnd() {
 	const eventType = store.selectedEvent;
 	if (!eventType || !eventRequiresAreaCoordinates(eventType)) return;
 	if (!store.trainingData?.uuid || !store.selectedStep?.id) return;
-	const area = getAreaForSave?.();
-	if (!area || !area.width || !area.height) return;
+	const r = getAreaForSave?.();
+	if (!r || !r.width || !r.height) return;
+	const body = buildPayloadArea(r);
+	if (!body) return;
 	try {
-		await trainingStepApi.editStep(store.trainingData.uuid, store.selectedStep.id, {
-			action_type_id: eventType.id,
-			area: {
-				...area,
-				metaText: metaText.value,
-				metaKeywords: metaKeywords.value,
-				metaFontSize: metaFontSize.value,
-				metaMatchMode: metaMatchMode.value,
-				metaPattern: metaPattern.value,
-				metaPatternPreset: metaPatternPreset.value,
-			}
-		});
+		await trainingStepApi.editStep(
+			store.trainingData.uuid,
+			store.selectedStep.id,
+			body
+		);
 		ensureArea();
-		Object.assign(store.selectedStep.area, area, {
-			metaText: metaText.value,
-			metaFontSize: metaFontSize.value,
-			metaMatchMode: metaMatchMode.value,
-			metaPattern: metaPattern.value,
-			metaPatternPreset: metaPatternPreset.value,
-		});
+		Object.assign(store.selectedStep.area, body.area);
+		store.selectedStep.action_type = {
+			...findToolbarEventById(body.action_type_id),
+		};
 		$q.notify({ color: 'positive', message: 'Размер сохранён', position: 'bottom-right', icon: 'check_circle', timeout: 1000 });
 	} catch {
 		// тихо игнорируем

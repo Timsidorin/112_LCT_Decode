@@ -33,6 +33,43 @@
 			</q-btn>
 		</div>
 
+		<div v-if="store.selectedStep" class="multi-action-strip">
+			<q-btn
+				dense
+				no-caps
+				outline
+				color="primary"
+				size="sm"
+				icon="playlist_add"
+				label="Ещё действие на этом шаге"
+				@click="addChainAction"
+			/>
+			<q-btn
+				v-if="chainLength > 1"
+				dense
+				no-caps
+				flat
+				color="grey-8"
+				size="sm"
+				icon="playlist_remove"
+				label="Оставить одно"
+				@click="collapseChain"
+			/>
+			<div v-if="chainLength > 1" class="multi-action-tabs row items-center q-gutter-xs">
+				<span class="text-caption text-grey-7">Подшаг:</span>
+				<q-btn-toggle
+					v-model="slotTab"
+					:options="slotOptions"
+					dense
+					no-caps
+					size="sm"
+					color="primary"
+					toggle-color="primary"
+					flat
+				/>
+			</div>
+		</div>
+
 		<!-- Панель хоткея -->
 		<transition name="panel-slide">
 			<div v-if="isKeyPressSelected" class="hotkey-panel">
@@ -82,9 +119,17 @@ import {
 } from "@components/features/edit_page/icons_tool_bar/index.js";
 import WatchKey from "@components/features/edit_page/WatchKey.vue";
 import { eventRequiresArea, isKeyPressType } from "@utils/actionTypes.js";
+import {
+	getExplicitActions,
+	buildAreaWithActions,
+	findToolbarEventById,
+} from "@utils/stepActionSequence.js";
 import { trainingStepApi } from "@api";
 import { useTrainingData } from "@store/editTraining.js";
 import { computed, ref, watch } from "vue";
+import { useQuasar } from "quasar";
+
+const $q = useQuasar();
 
 const store = useTrainingData();
 const isHotkeyDialogOpen = ref(false);
@@ -115,13 +160,32 @@ const goToNextStep = () => {
 
 const isKeyPressSelected = computed(() => isKeyPressType(store.selectedEvent));
 
+function keywordsSlice() {
+	const step = store.selectedStep;
+	if (!step?.area) return null;
+	const acts = step.area.actions;
+	if (!Array.isArray(acts) || !acts.length) return null;
+	const i = Math.min(Math.max(0, store.stepActionEditIndex ?? 0), acts.length - 1);
+	if (!acts[i]) acts[i] = {};
+	return acts[i];
+}
+
 const metaKeywords = computed({
-	get() { return store.selectedStep?.area?.metaKeywords || []; },
+	get() {
+		const sl = keywordsSlice();
+		if (sl) return sl.metaKeywords || [];
+		return store.selectedStep?.area?.metaKeywords || [];
+	},
 	set(value) {
 		if (!store.selectedStep) return;
+		const sl = keywordsSlice();
+		if (sl) {
+			sl.metaKeywords = value;
+			return;
+		}
 		if (!store.selectedStep.area) store.selectedStep.area = {};
 		store.selectedStep.area.metaKeywords = value;
-	}
+	},
 });
 
 const hotkeyLabel = computed(() =>
@@ -130,15 +194,34 @@ const hotkeyLabel = computed(() =>
 
 const saveKeyPress = async () => {
 	if (!store.trainingData?.uuid || !store.selectedStep?.id || !store.selectedEvent?.id) return;
+	const step = store.selectedStep;
+	const seq = getExplicitActions(step);
 	try {
-		await trainingStepApi.editStep(
-			store.trainingData.uuid,
-			store.selectedStep.id,
-			{
+		let body;
+		if (seq?.length) {
+			const idx = Math.min(
+				Math.max(0, store.stepActionEditIndex ?? 0),
+				seq.length - 1
+			);
+			const actions = seq.map((x) => ({ ...x }));
+			actions[idx] = {
+				...actions[idx],
+				action_type_id: 6,
+				metaKeywords: metaKeywords.value || [],
+			};
+			body = {
+				action_type_id: actions[0].action_type_id,
+				area: buildAreaWithActions(actions, step.area),
+			};
+		} else {
+			body = {
 				action_type_id: store.selectedEvent.id,
-				area: { metaKeywords: metaKeywords.value || [] }
-			}
-		);
+				area: { metaKeywords: metaKeywords.value || [] },
+			};
+		}
+		await trainingStepApi.editStep(store.trainingData.uuid, store.selectedStep.id, body);
+		if (!store.selectedStep.area) store.selectedStep.area = {};
+		Object.assign(store.selectedStep.area, body.area);
 	} catch (e) {
 		console.error(e);
 	}
@@ -148,11 +231,137 @@ const openHotkeyDialog = () => { isHotkeyDialogOpen.value = true; };
 
 const selectEvent = async (event) => {
 	store.selectEvent(event);
+	const step = store.selectedStep;
+	const seq = getExplicitActions(step);
+	if (seq?.length && store.trainingData?.uuid && step?.id && !isKeyPressType(event)) {
+		const idx = Math.min(
+			Math.max(0, store.stepActionEditIndex ?? 0),
+			seq.length - 1
+		);
+		const actions = seq.map((x) => ({ ...x }));
+		actions[idx] = { ...actions[idx], action_type_id: event.id };
+		const newArea = buildAreaWithActions(actions, step.area);
+		try {
+			await trainingStepApi.editStep(store.trainingData.uuid, step.id, {
+				action_type_id: actions[0].action_type_id,
+				area: newArea,
+			});
+			Object.assign(step.area, newArea);
+			step.action_type = { ...findToolbarEventById(actions[0].action_type_id) };
+		} catch (e) {
+			console.error(e);
+		}
+	}
 	if (isKeyPressType(event)) {
 		await saveKeyPress();
 		openHotkeyDialog();
 	}
 };
+
+const chainLength = computed(() => getExplicitActions(store.selectedStep)?.length || 0);
+
+const slotTab = computed({
+	get: () => store.stepActionEditIndex,
+	set: (v) => {
+		const n = Number(v);
+		store.stepActionEditIndex = Number.isFinite(n) ? Math.max(0, n) : 0;
+	},
+});
+
+const slotOptions = computed(() =>
+	Array.from({ length: chainLength.value }, (_, i) => ({
+		label: String(i + 1),
+		value: i,
+	}))
+);
+
+async function addChainAction() {
+	if (!store.trainingData?.uuid || !store.selectedStep?.id) return;
+	const step = store.selectedStep;
+	const ev = store.selectedEvent || findToolbarEventById(1);
+	let actions = getExplicitActions(step);
+	if (!actions?.length) {
+		const aid = step.action_type?.id || ev.id;
+		const a = step.area || {};
+		actions = [
+			{
+				action_type_id: aid,
+				x: Number(a.x) || 0,
+				y: Number(a.y) || 0,
+				width: Math.max(40, Number(a.width) || 120),
+				height: Math.max(24, Number(a.height) || 48),
+				...(["metaText", "metaKeywords", "metaFontSize", "metaMatchMode", "metaPattern", "metaPatternPreset"].reduce(
+					(o, k) => {
+						if (a[k] != null) o[k] = a[k];
+						return o;
+					},
+					{}
+				)),
+			},
+		];
+	}
+	const w = step.photo_dimensions?.width || 800;
+	const h = step.photo_dimensions?.height || 600;
+	actions = [...actions, {
+		action_type_id: ev.id,
+		x: Math.min(32, w - 180),
+		y: Math.min(120, h - 80),
+		width: 168,
+		height: 44,
+	}];
+	const newArea = buildAreaWithActions(actions, step.area);
+	try {
+		await trainingStepApi.editStep(store.trainingData.uuid, step.id, {
+			action_type_id: actions[0].action_type_id,
+			area: newArea,
+		});
+		Object.assign(step.area, newArea);
+		step.action_type = { ...findToolbarEventById(actions[0].action_type_id) };
+		store.stepActionEditIndex = actions.length - 1;
+		store.selectEvent(ev);
+		$q.notify({
+			color: "positive",
+			message: "Добавлено действие — нарисуйте область на скрине",
+			position: "bottom-right",
+			icon: "playlist_add",
+			timeout: 2200,
+		});
+	} catch (e) {
+		console.error(e);
+		$q.notify({ color: "negative", message: "Не удалось сохранить цепочку", position: "top" });
+	}
+}
+
+async function collapseChain() {
+	if (!store.trainingData?.uuid || !store.selectedStep?.id) return;
+	const step = store.selectedStep;
+	const seq = getExplicitActions(step);
+	if (!seq || seq.length < 2) return;
+	const f = { ...seq[0] };
+	const flat = {
+		x: f.x,
+		y: f.y,
+		width: f.width,
+		height: f.height,
+	};
+	for (const k of ["metaText", "metaKeywords", "metaFontSize", "metaMatchMode", "metaPattern", "metaPatternPreset", "metaTextScale"]) {
+		if (f[k] != null) flat[k] = f[k];
+	}
+	try {
+		await trainingStepApi.editStep(store.trainingData.uuid, step.id, {
+			action_type_id: f.action_type_id,
+			area: flat,
+		});
+		if (!step.area) step.area = {};
+		Object.assign(step.area, flat);
+		delete step.area.actions;
+		step.action_type = { ...findToolbarEventById(f.action_type_id) };
+		store.stepActionEditIndex = 0;
+		$q.notify({ color: "positive", message: "Оставлено одно действие", position: "bottom-right", timeout: 1500 });
+	} catch (e) {
+		console.error(e);
+	}
+}
 
 watch(
 	() => isHotkeyDialogOpen.value,
@@ -263,5 +472,19 @@ const events = [
 .panel-slide-leave-to {
 	opacity: 0;
 	transform: translateY(8px);
+}
+
+.multi-action-strip {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	pointer-events: auto;
+	max-width: min(520px, 92vw);
+}
+
+.multi-action-tabs {
+	flex-wrap: wrap;
+	justify-content: center;
 }
 </style>

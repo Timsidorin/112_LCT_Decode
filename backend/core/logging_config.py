@@ -48,6 +48,3 @@ def setup_logging(
             rotation="1 day",
             retention="7 days",
         )
-
-
-# Импортировать в модулях: from core.logging_config import logger

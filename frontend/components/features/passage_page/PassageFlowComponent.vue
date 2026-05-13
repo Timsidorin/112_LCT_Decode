@@ -194,6 +194,11 @@ import {
 	isInputTextType,
 	isClickValidatedType,
 } from "@utils/actionTypes.js";
+import {
+	getExplicitActions,
+	findToolbarEventById,
+	areaViewFromEntry,
+} from "@utils/stepActionSequence.js";
 
 const props = defineProps({
 	selectedStep: { type: Object, default: null },
@@ -260,8 +265,34 @@ const zoomPanStyle = computed(() => ({
 	transformOrigin: "center center",
 }));
 
-const area = computed(() => props.selectedStep?.area);
-const actionType = computed(() => props.selectedStep?.action_type);
+/** Подшаги: несколько действий на одном скрине (area.actions[]) */
+const subActionIndex = ref(0);
+
+const actionSequence = computed(() => getExplicitActions(props.selectedStep));
+
+const currentActionEntry = computed(() => {
+	const seq = actionSequence.value;
+	if (!seq?.length) return null;
+	const i = Math.min(Math.max(0, subActionIndex.value), seq.length - 1);
+	return seq[i];
+});
+
+const area = computed(() => {
+	const base = props.selectedStep?.area || {};
+	const e = currentActionEntry.value;
+	if (!e) return base;
+	const slice = areaViewFromEntry(e);
+	return { ...base, ...slice };
+});
+
+const actionType = computed(() => {
+	const e = currentActionEntry.value;
+	if (e?.action_type_id != null) {
+		const fe = findToolbarEventById(e.action_type_id);
+		return { id: fe.id, type: fe.type, name: fe.name };
+	}
+	return props.selectedStep?.action_type;
+});
 
 const isPassageMode = computed(() => props.mode === "passage");
 
@@ -626,13 +657,14 @@ function isPointInArea(px, py) {
 	return px >= ax && px <= ax + aw && py >= ay && py <= ay + ah;
 }
 
-async function emitActionComplete() {
+async function finishParentStep() {
 	if (outcomeBusy.value) return;
 	outcomeBusy.value = true;
-	
-	// Визуальный фидбек: правильное действие
+
 	showCorrectFeedback.value = true;
-	setTimeout(() => { showCorrectFeedback.value = false; }, 600);
+	setTimeout(() => {
+		showCorrectFeedback.value = false;
+	}, 600);
 
 	try {
 		const afterUrl = stepAfterImageUrl(props.selectedStep);
@@ -651,6 +683,40 @@ async function emitActionComplete() {
 	}
 }
 
+/** Завершено текущее поддействие: либо следующее в цепочке, либо весь шаг */
+async function advanceOrCompleteStep() {
+	const seq = actionSequence.value;
+	if (
+		seq &&
+		seq.length > 1 &&
+		subActionIndex.value < seq.length - 1
+	) {
+		subActionIndex.value += 1;
+		inputValue.value = "";
+		hintMaskValue.value = "";
+		cancelHintTypewriter();
+		forcedAfterUrl.value = null;
+		if (hoverTimer.value) {
+			clearTimeout(hoverTimer.value);
+			hoverTimer.value = null;
+		}
+		showCorrectFeedback.value = true;
+		setTimeout(() => {
+			showCorrectFeedback.value = false;
+		}, 450);
+		await nextTick();
+		updateImageContentLayout();
+		setTimeout(() => {
+			if (isPassageMode.value && isInputTextType(actionType.value)) {
+				autoZoomToActionArea();
+				overlayInputRef.value?.focus?.();
+			}
+		}, 120);
+		return;
+	}
+	await finishParentStep();
+}
+
 function onWrapClick(e) {
 	if (passageInteractionLocked.value) return;
 	if (didPanThisGesture.value) {
@@ -665,7 +731,7 @@ function onWrapClick(e) {
 	if (!coords) return;
 	if (isPointInArea(coords.x, coords.y)) {
 		e.preventDefault();
-		void emitActionComplete();
+		void advanceOrCompleteStep();
 	} else {
 		emit("action-wrong");
 	}
@@ -683,7 +749,7 @@ function onWrapContextMenu(e) {
 	if (!coords) return;
 	if (isPointInArea(coords.x, coords.y)) {
 		e.preventDefault();
-		void emitActionComplete();
+		void advanceOrCompleteStep();
 	} else {
 		emit("action-wrong");
 	}
@@ -701,7 +767,7 @@ function onWrapDblClick(e) {
 	if (!coords) return;
 	if (isPointInArea(coords.x, coords.y)) {
 		e.preventDefault();
-		void emitActionComplete();
+		void advanceOrCompleteStep();
 	} else {
 		emit("action-wrong");
 	}
@@ -717,7 +783,7 @@ function onWrapMouseMove(e) {
 		if (!hoverTimer.value) {
 			hoverTimer.value = setTimeout(() => {
 				hoverTimer.value = null;
-				void emitActionComplete();
+				void advanceOrCompleteStep();
 			}, 800);
 		}
 	} else {
@@ -745,7 +811,7 @@ function onAreaClick(e) {
 	if (passageInteractionLocked.value) return;
 	if (actionType.value?.type === "leftClick") {
 		e.preventDefault();
-		void emitActionComplete();
+		void advanceOrCompleteStep();
 	}
 }
 
@@ -753,7 +819,7 @@ function onAreaDblClick(e) {
 	if (passageInteractionLocked.value) return;
 	if (actionType.value?.type === "doubleClick") {
 		e.preventDefault();
-		void emitActionComplete();
+		void advanceOrCompleteStep();
 	}
 }
 
@@ -761,7 +827,7 @@ function onAreaContextMenu(e) {
 	if (passageInteractionLocked.value) return;
 	if (actionType.value?.type === "rightClick") {
 		e.preventDefault();
-		void emitActionComplete();
+		void advanceOrCompleteStep();
 	}
 }
 
@@ -770,7 +836,7 @@ function onAreaMouseEnter() {
 	if (actionType.value?.type !== "hover") return;
 	hoverTimer.value = setTimeout(() => {
 		hoverTimer.value = null;
-		void emitActionComplete();
+		void advanceOrCompleteStep();
 	}, 800);
 }
 
@@ -813,7 +879,7 @@ function tryCompleteInputIfMatch() {
 		if (!expected) return;
 		if (actual === expected) {
 			inputValue.value = "";
-			void emitActionComplete();
+			void advanceOrCompleteStep();
 		}
 	}
 }
@@ -893,26 +959,26 @@ function onOverlayKeydown(e) {
 			const pattern = area.value?.metaPattern;
 			if (!pattern) {
 				inputValue.value = "";
-				void emitActionComplete();
+				void advanceOrCompleteStep();
 				return;
 			}
 			try {
 				const rx = new RegExp(pattern);
 				if (rx.test(actual)) {
 					inputValue.value = "";
-					void emitActionComplete();
+					void advanceOrCompleteStep();
 				} else {
 					triggerInputError();
 				}
 			} catch {
 				inputValue.value = "";
-				void emitActionComplete();
+				void advanceOrCompleteStep();
 			}
 		} else {
 			const expected = normalizeTextForValidation(area.value?.metaText);
 			if (expected && actual === expected) {
 				inputValue.value = "";
-				void emitActionComplete();
+				void advanceOrCompleteStep();
 			} else {
 				triggerInputError();
 			}
@@ -970,7 +1036,7 @@ function checkInputText() {
 
 	if (matched) {
 		inputValue.value = "";
-		void emitActionComplete();
+		void advanceOrCompleteStep();
 	} else {
 		emit("action-wrong");
 	}
@@ -1042,13 +1108,14 @@ function onKeyDown(e) {
 
 	if (sameKeyCombo(pressed, expected)) {
 		e.preventDefault();
-		void emitActionComplete();
+		void advanceOrCompleteStep();
 	}
 }
 
 watch(
 	() => props.selectedStep?.id,
 	() => {
+		subActionIndex.value = 0;
 		forcedAfterUrl.value = null;
 		outcomeBusy.value = false;
 		cancelHintTypewriter();

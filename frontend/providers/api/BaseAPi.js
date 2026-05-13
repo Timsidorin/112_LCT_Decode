@@ -70,6 +70,7 @@ export class BaseApi {
 	}
 
 	async createRequest() {
+<<<<<<< HEAD
     if (this.axiosInstance) {
         return await this.axiosInstance({
             url: this.sourceUrl,   // только relative path
@@ -83,4 +84,21 @@ export class BaseApi {
         });
     }
 }
+=======
+		if (this.axiosInstance) {
+			return await this.axiosInstance({
+				url: this.baseUrl + this.sourceUrl,
+				method: this.httpMethod,
+				params: { ...this.params },
+				data: this.data,
+				maxBodyLength: Infinity,
+				maxContentLength: Infinity,
+				headers: {
+					...this.headers,
+					...{ Authorization: `Bearer ${localStorage.getItem("tokenAuth")}` },
+				},
+			});
+		}
+	}
+>>>>>>> 9781ce55599561a426bee2fd75f68290cff1334a
 }
