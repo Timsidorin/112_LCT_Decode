@@ -25,7 +25,6 @@ class User(Base):
         sa.DateTime, server_default=text("NOW()")
     )
     photo: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
-
     created_trainings: Mapped[List["Training"]] = relationship(
         "models.trainings.Training", back_populates="creator"
     )

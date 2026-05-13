@@ -1,5 +1,3 @@
-# models/trainings.py
-
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional

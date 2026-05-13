@@ -23,10 +23,6 @@ class TrainingRepository:
         self.session = session
 
     def _get_eager_load_options(self):
-        """
-        Правильная рекурсивная загрузка вложенных steps
-        Нельзя цеплять разные relationship друг за другом!
-        """
         from sqlalchemy.orm import selectinload
 
         steps_with_action = selectinload(Training.steps).selectinload(

@@ -86,7 +86,7 @@ class PdfStepData:
     instruction_md: str
     step_title: str
     bbox: List[float]
-    page_bytes: bytes       # Чистое изображение скриншота
+    page_bytes: bytes
     page_width: int
     page_height: int
     action_type_key: str
@@ -121,7 +121,14 @@ def _normalize_interaction_type(raw: str) -> str:
     }
     if r in aliases:
         return aliases[r]
-    allowed = {"left_click", "right_click", "double_click", "hover", "text_input", "key_chord"}
+    allowed = {
+        "left_click",
+        "right_click",
+        "double_click",
+        "hover",
+        "text_input",
+        "key_chord",
+    }
     return r if r in allowed else "left_click"
 
 
@@ -174,16 +181,17 @@ class PdfAiService:
         for page_idx in range(total_pages):
             page = doc[page_idx]
             page_number = page_idx + 1
-            
+
             images_on_page = page.get_images(full=True)
             page_text_full = page.get_text("text").strip()
 
             if not images_on_page:
-                # Fallback: страница без изображений — рендерим всю страницу
                 if not page_text_full:
                     logger.info(f"[PDF AI] Страница {page_number}: пустая, пропуск")
                     continue
-                logger.info(f"[PDF AI] Страница {page_number}: нет изображений, рендерим всю страницу")
+                logger.info(
+                    f"[PDF AI] Страница {page_number}: нет изображений, рендерим всю страницу"
+                )
                 try:
                     pix = page.get_pixmap(matrix=matrix, alpha=False)
                     png_bytes = pix.tobytes("png")
@@ -198,22 +206,25 @@ class PdfAiService:
                     if step_data:
                         results.append(step_data)
                 except Exception as e:
-                    logger.warning(f"[PDF AI] Стр {page_number}: ошибка рендеринга страницы — {e}")
+                    logger.warning(
+                        f"[PDF AI] Стр {page_number}: ошибка рендеринга страницы — {e}"
+                    )
                 continue
 
-            logger.info(f"[PDF AI] Страница {page_number}: найдено {len(images_on_page)} объектов изображений")
+            logger.info(
+                f"[PDF AI] Страница {page_number}: найдено {len(images_on_page)} объектов изображений"
+            )
 
             added_for_page = False
-            # Каждое изображение может быть одним шагом
             for img_info in images_on_page:
                 xref = img_info[0]
                 rects = page.get_image_rects(xref)
                 if not rects:
                     continue
-                
+
                 # Работаем с первым вхождением изображения на странице
                 rect = rects[0]
-                
+
                 # Фильтр на мелкие элементы (иконки, линии) — обычно скриншот крупный
                 if rect.width < PDF_MIN_IMG_WIDTH or rect.height < PDF_MIN_IMG_HEIGHT:
                     continue
@@ -223,7 +234,7 @@ class PdfAiService:
                     0,
                     max(0, rect.y0 - 200),
                     page.rect.width,
-                    min(page.rect.height, rect.y1 + 200)
+                    min(page.rect.height, rect.y1 + 200),
                 )
                 context_text = page.get_text("text", clip=context_rect).strip()
                 # Если контекст пустой — используем весь текст страницы
@@ -237,7 +248,9 @@ class PdfAiService:
                     img_width = pix.width
                     img_height = pix.height
                 except Exception as e:
-                    logger.warning(f"[PDF AI] Стр {page_number}: ошибка рендеринга картинки {xref} — {e}")
+                    logger.warning(
+                        f"[PDF AI] Стр {page_number}: ошибка рендеринга картинки {xref} — {e}"
+                    )
                     continue
 
                 # Анализируем через VLM
@@ -246,16 +259,18 @@ class PdfAiService:
                     png_bytes=png_bytes,
                     context_text=context_text,
                     width=img_width,
-                    height=img_height
+                    height=img_height,
                 )
-                
+
                 if step_data:
                     results.append(step_data)
                     added_for_page = True
 
             # Если ни одно изображение не дало шага — рендерим всю страницу как fallback
             if not added_for_page and page_text_full:
-                logger.info(f"[PDF AI] Страница {page_number}: изображения не дали шага, fallback — вся страница")
+                logger.info(
+                    f"[PDF AI] Страница {page_number}: изображения не дали шага, fallback — вся страница"
+                )
                 try:
                     pix = page.get_pixmap(matrix=matrix, alpha=False)
                     png_bytes = pix.tobytes("png")
@@ -270,7 +285,9 @@ class PdfAiService:
                     if step_data:
                         results.append(step_data)
                 except Exception as e:
-                    logger.warning(f"[PDF AI] Стр {page_number}: ошибка fallback рендеринга — {e}")
+                    logger.warning(
+                        f"[PDF AI] Стр {page_number}: ошибка fallback рендеринга — {e}"
+                    )
 
         doc.close()
         logger.info(f"[PDF AI] Найдено {len(results)} шагов")
@@ -288,7 +305,9 @@ class PdfAiService:
         """Анализирует ОДИН конкретный скриншот ПО."""
         try:
             base64_image = base64.b64encode(png_bytes).decode("utf-8")
-            template = PDF_FULL_PAGE_ANALYSIS_PROMPT if full_page else PDF_PAGE_ANALYSIS_PROMPT
+            template = (
+                PDF_FULL_PAGE_ANALYSIS_PROMPT if full_page else PDF_PAGE_ANALYSIS_PROMPT
+            )
             prompt = template.format(
                 page_text=context_text[:4000] if context_text else "Контекст не найден."
             )
@@ -314,18 +333,19 @@ class PdfAiService:
             )
 
             raw_response = completion.choices[0].message.content
-            
+
             # Парсим результат
             text = raw_response.strip()
             code_block = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
             if code_block:
                 text = code_block.group(1).strip()
-            
+
             try:
                 data = json.loads(text)
             except:
                 match = re.search(r"\{.*\}", text, re.DOTALL)
-                if not match: return None
+                if not match:
+                    return None
                 data = json.loads(match.group(0))
 
             # Пустой ответ (модель не нашла действие)
@@ -340,24 +360,31 @@ class PdfAiService:
 
             inter = data.get("interaction") or data
             itype = _normalize_interaction_type(str(inter.get("type") or "left_click"))
-            
+
             raw_bbox = inter.get("bbox")
             bbox = self._coerce_bbox(raw_bbox)
             if not bbox:
                 return None
-            
+
             bbox = self._normalize_bbox_scale(bbox)
             x1, y1, x2, y2 = bbox
-            bbox = [max(0.0, min(1.0, b)) for b in [min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)]]
+            bbox = [
+                max(0.0, min(1.0, b))
+                for b in [min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)]
+            ]
 
             # Фильтр слишком маленьких и слишком больших bbox
             bw = bbox[2] - bbox[0]
             bh = bbox[3] - bbox[1]
             if bw < 0.005 or bh < 0.005:
-                logger.warning(f"[PDF AI] Стр {page_number}: bbox слишком мал ({bw:.3f}x{bh:.3f}), пропуск")
+                logger.warning(
+                    f"[PDF AI] Стр {page_number}: bbox слишком мал ({bw:.3f}x{bh:.3f}), пропуск"
+                )
                 return None
             if bw > 0.95 or bh > 0.95:
-                logger.warning(f"[PDF AI] Стр {page_number}: bbox слишком велик ({bw:.3f}x{bh:.3f}), пропуск")
+                logger.warning(
+                    f"[PDF AI] Стр {page_number}: bbox слишком велик ({bw:.3f}x{bh:.3f}), пропуск"
+                )
                 return None
 
             expected_text = None
@@ -366,6 +393,7 @@ class PdfAiService:
                 expected_text = str(inter.get("expected_text") or "").strip() or None
             elif itype == "key_chord":
                 from services.video_ai_service import _normalize_key_chord as _nkc
+
                 key_chord = _nkc(inter.get("key_chord"))
 
             return PdfStepData(
@@ -387,27 +415,37 @@ class PdfAiService:
 
     def _coerce_bbox(self, raw: Any) -> Optional[List[float]]:
         if isinstance(raw, list) and len(raw) == 4:
-            try: return [float(v) for v in raw]
-            except: return None
-        if not isinstance(raw, dict): return None
-        
+            try:
+                return [float(v) for v in raw]
+            except:
+                return None
+        if not isinstance(raw, dict):
+            return None
+
         # Обработка словаря x1, y1, x2, y2 или x, y, w, h
         def _get(*keys):
             for k in keys:
-                if k in raw: return raw[k]
+                if k in raw:
+                    return raw[k]
             return None
-            
-        coords = [_get("x1", "xmin", "left"), _get("y1", "ymin", "top"), _get("x2", "xmax", "right"), _get("y2", "ymax", "bottom")]
+
+        coords = [
+            _get("x1", "xmin", "left"),
+            _get("y1", "ymin", "top"),
+            _get("x2", "xmax", "right"),
+            _get("y2", "ymax", "bottom"),
+        ]
         if None not in coords:
             return [float(c) for c in coords]
-            
+
         x, y, w, h = _get("x"), _get("y"), _get("w", "width"), _get("h", "height")
         if None not in (x, y, w, h):
-            return [float(x), float(y), float(x)+float(w), float(y)+float(h)]
+            return [float(x), float(y), float(x) + float(w), float(y) + float(h)]
         return None
 
     def _normalize_bbox_scale(self, bbox: List[float]) -> List[float]:
-        if not bbox or len(bbox) != 4: return bbox
+        if not bbox or len(bbox) != 4:
+            return bbox
         if all(0.0 <= b <= 100.0 for b in bbox) and any(b > 1.0 for b in bbox):
             return [b / 100.0 for b in bbox]
         return bbox
