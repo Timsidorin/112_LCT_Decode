@@ -268,7 +268,7 @@
         </q-card-section>
         <q-card-section class="video-dialog-body" style="height: calc(100vh - 66px); display: flex; align-items: center; justify-content: center; padding: 0 24px 24px;">
           <video
-            src="./Итог.mp4"
+            src=""
             controls
             autoplay
             style="width: 100%; height: 100%; max-height: 85vh; border-radius: 16px; object-fit: contain; background: #000;"

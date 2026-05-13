@@ -1,15 +1,12 @@
-import { BaseApi } from "./BaseAPi.js";
+import axios from 'axios';
 
-export class AuthApi extends BaseApi {
-	constructor() {
-		super(__BASE__URL__);
-	}
-
-	getMe() {
-		super.httpMethod = "get";
-		super.sourceUrl = "/auth/me/";
-		return super.createRequest();
-	}
+export class AuthApi {
+    getMe() {
+        const token = localStorage.getItem('tokenAuth');
+        return axios.get('/api/auth/me/', {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+    }
 }
 
 export const authApi = new AuthApi();
