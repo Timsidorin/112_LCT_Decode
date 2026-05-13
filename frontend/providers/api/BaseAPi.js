@@ -1,104 +1,78 @@
 import axios from "axios";
 
 export class BaseApi {
-	_baseUrl = "";
-	_sourceUrl = "";
-	_httpMethod = "";
-	_data = {};
-	_params = {};
-	_axiosInstance = null;
-	_headers = {};
+        _baseUrl = "";
+        _sourceUrl = "";
+        _httpMethod = "";
+        _data = {};
+        _params = {};
+        _axiosInstance = null;
+        _headers = {};
 
-	constructor(baseUrl) {
-		this._baseUrl = baseUrl;
-		this._axiosInstance = axios.create({
-			baseURL: this.baseUrl,
-		});
-	}
+        constructor(baseUrl) {
+                this._baseUrl = baseUrl;
+                this._axiosInstance = axios.create({
+                        baseURL: this._baseUrl, // Исправлено: добавлено подчёркивание
+                });
+        }
 
-	set httpMethod(method) {
-		let allowedMethods = ["get", "post", "put", "delete", "patch"];
-		if (allowedMethods.includes(method)) {
-			this._httpMethod = method;
-		} else {
-			throw new Error(`Разрешенные методы (${allowedMethods.join(", ")})`);
-		}
-	}
+        set httpMethod(method) {
+                let allowedMethods = ["get", "post", "put", "delete", "patch"];
+                if (allowedMethods.includes(method.toLowerCase())) {
+                        this._httpMethod = method.toLowerCase();
+                } else {
+                        throw new Error(`Разрешенные методы (${allowedMethods.join(", ")})`);
+                }
+        }
 
-	get httpMethod() {
-		return this._httpMethod;
-	}
+        get httpMethod() {
+                return this._httpMethod;
+        }
 
-	set data(data) {
-		this._data = data;
-	}
+        set data(data) {
+                this._data = data;
+        }
 
-	get data() {
-		return this._data;
-	}
+        get data() {
+                return this._data;
+        }
 
-	set params(params) {
-		this._params = params;
-	}
+        set sourceUrl(url) {
+                this._sourceUrl = url;
+        }
 
-	get params() {
-		return this._params;
-	}
+        get sourceUrl() {
+                return this._sourceUrl;
+        }
 
-	get baseUrl() {
-		return this._baseUrl;
-	}
+        set params(params) {
+                this._params = params;
+        }
 
-	set sourceUrl(sourceUrl) {
-		this._sourceUrl = sourceUrl;
-	}
+        get params() {
+                return this._params;
+        }
 
-	get sourceUrl() {
-		return this._sourceUrl;
-	}
+        set headers(headers) {
+                this._headers = headers;
+        }
 
-	get axiosInstance() {
-		return this._axiosInstance;
-	}
+        get headers() {
+                return this._headers;
+        }
 
-	get headers() {
-		return this._headers;
-	}
-
-	set headers(headers) {
-		this._headers = headers;
-	}
-
-	async createRequest() {
-<<<<<<< HEAD
-    if (this.axiosInstance) {
-        return await this.axiosInstance({
-            url: this.sourceUrl,   // только relative path
-            method: this.httpMethod,
-            params: { ...this.params },
-            data: this.data,
-            headers: {
-                ...this.headers,
-                ...{ Authorization: `Bearer ${localStorage.getItem("tokenAuth")}` },
-            },
-        });
-    }
-}
-=======
-		if (this.axiosInstance) {
-			return await this.axiosInstance({
-				url: this.baseUrl + this.sourceUrl,
-				method: this.httpMethod,
-				params: { ...this.params },
-				data: this.data,
-				maxBodyLength: Infinity,
-				maxContentLength: Infinity,
-				headers: {
-					...this.headers,
-					...{ Authorization: `Bearer ${localStorage.getItem("tokenAuth")}` },
-				},
-			});
-		}
-	}
->>>>>>> 9781ce55599561a426bee2fd75f68290cff1334a
+        async request() {
+                try {
+                        const response = await this._axiosInstance({
+                                method: this._httpMethod,
+                                url: this._sourceUrl,
+                                data: this._data,
+                                params: this._params,
+                                headers: this._headers
+                        });
+                        return response.data;
+                } catch (error) {
+                        throw error;
+                }
+        }
 }
