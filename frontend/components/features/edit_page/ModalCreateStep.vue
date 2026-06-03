@@ -242,7 +242,8 @@ const addSteps = async () => {
 		if (uploadMode.value === "video") {
 			$q.notify({
 				message: "Шаги из видео успешно добавлены!",
-				caption: "AI распознал действия автоматически. Вы можете отредактировать описания и уточнить области действий.",
+				caption:
+					"AI распознал действия автоматически. Вы можете отредактировать описания и уточнить области действий.",
 				type: "positive",
 				position: "bottom-right",
 				icon: "smart_display",
@@ -251,9 +252,9 @@ const addSteps = async () => {
 					{
 						label: "Понятно",
 						color: "white",
-						handler: () => {}
-					}
-				]
+						handler: () => {},
+					},
+				],
 			});
 		} else {
 			$q.notify({

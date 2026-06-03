@@ -85,7 +85,7 @@
 import { ref } from "vue";
 import UserCard from "@components/features/personal_page/header/UserCard.vue";
 import { useUserStore } from "@store/userData.js";
-import { useNotificationsStore } from "@store/notifications.js";
+// import { useNotificationsStore } from "@store/notifications.js";
 
 export default {
 	name: "BaseLayout",
@@ -95,13 +95,13 @@ export default {
 		if (token && !useUserStore().isLoaded) {
 			await useUserStore().fetchUser();
 		}
-		if (token) {
-			useNotificationsStore().connect();
-		}
+		// if (token) {
+		// 	useNotificationsStore().connect();
+		// }
 	},
-	beforeUnmount() {
-		useNotificationsStore().disconnect();
-	},
+	// beforeUnmount() {
+	// 	useNotificationsStore().disconnect();
+	// },
 	setup() {
 		const drawerLeft = ref(false);
 		return {

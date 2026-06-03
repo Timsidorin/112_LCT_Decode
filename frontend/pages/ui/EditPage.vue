@@ -107,6 +107,7 @@ import { BaseLoader } from "@components/base_components/index.js";
 import ToolBar from "@components/features/edit_page/tool_bar/ui/ToolBar.vue";
 import ScreenshotCropDialog from "@components/features/edit_page/ScreenshotCropDialog.vue";
 import { useQuasar } from "quasar";
+// import { useNotificationsStore } from "@store/notifications.js";
 
 const trainingApi = new TrainingApi();
 const route = useRoute();
@@ -193,6 +194,26 @@ async function getTrainingData() {
 onMounted(() => {
 	getTrainingData();
 });
+
+// --- WebSocket / фоновая обработка видео — отключено ---
+// function onTrainingTaskUpdate(event) {
+// 	const detail = event?.detail;
+// 	if (!detail?.training_uuid) return;
+// 	if (String(detail.training_uuid) !== String(route.params.uuid)) return;
+// 	if (detail.status === "completed") {
+// 		void getTrainingData();
+// 	}
+// }
+// onMounted(() => {
+// 	getTrainingData();
+// 	if (localStorage.getItem("tokenAuth")) {
+// 		useNotificationsStore().connect();
+// 	}
+// 	window.addEventListener("training-task-update", onTrainingTaskUpdate);
+// });
+// onUnmounted(() => {
+// 	window.removeEventListener("training-task-update", onTrainingTaskUpdate);
+// });
 </script>
 
 <style scoped>

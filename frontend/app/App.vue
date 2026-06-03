@@ -27,3 +27,16 @@ export default {
 	name: "App",
 };
 </script>
+
+<!-- WebSocket-уведомления (очередь задач) — отключено
+<script setup>
+import { onMounted } from "vue";
+import { useNotificationsStore } from "@store/notifications.js";
+
+onMounted(() => {
+	if (localStorage.getItem("tokenAuth")) {
+		useNotificationsStore().connect();
+	}
+});
+</script>
+-->

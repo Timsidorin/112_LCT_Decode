@@ -541,7 +541,8 @@ const uploadVideo = async () => {
 
 		$q.notify({
 			message: "Шаги из видео успешно созданы!",
-			caption: "AI распознал действия автоматически. Вы можете отредактировать описания и уточнить области действий.",
+			caption:
+				"AI распознал действия автоматически. Вы можете отредактировать описания и уточнить области действий.",
 			type: "positive",
 			position: "bottom-right",
 			icon: "smart_display",
@@ -550,9 +551,9 @@ const uploadVideo = async () => {
 				{
 					label: "Понятно",
 					color: "white",
-					handler: () => {}
-				}
-			]
+					handler: () => {},
+				},
+			],
 		});
 	} catch {
 		$q.notify({
@@ -564,6 +565,14 @@ const uploadVideo = async () => {
 		loading.value = false;
 	}
 };
+
+// --- Фоновая очередь: без ожидания на экране, уведомления по WebSocket — отключено ---
+// const uploadVideo = async () => {
+// 	...
+// 	await metaApi.uploadVideo(...);
+// 	clearVideo();
+// 	$q.notify({ message: "Видео отправлено на обработку", ... });
+// };
 
 const uploadPdf = async () => {
 	if (!pdfFile.value) return;
