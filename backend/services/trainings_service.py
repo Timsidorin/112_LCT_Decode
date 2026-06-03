@@ -239,6 +239,7 @@ class TrainingsService:
             active_pub = next((p for p in training.publications if p.is_active), None)
             if active_pub:
                 item.public_link = f"/training/passage/{active_pub.access_token}"
+            item.steps_count = len(training.steps) if training.steps else 0
             result.append(item)
         return result
 
@@ -756,33 +757,130 @@ class TrainingsService:
                 detail=f"Ошибка обновления порядка шагов: {str(e)}",
             )
 
+    async def start_async_video_processing(
+        self,
+        training_uuid: UUID4,
+        user_id: int,
+        video_file: UploadFile,
+        s3_service: S3Service,
+    ):
+        """Загружает видео в S3, создаёт задачу и ставит в очередь Celery."""
+        from models.tasks import TaskStatus, TaskType
+        from repositories.tasks_repository import TasksRepository
+        from schemas.tasks import TaskCreateResponse, TaskStatusEnum
+        from core.redis_pubsub import publish_task_notification
+        from schemas.tasks import TaskNotificationPayload
+        from worker.tasks import process_training_video_task
+
+        await self._require_training_owner(training_uuid, user_id)
+
+        if not video_file.filename:
+            raise HTTPException(status_code=400, detail="Имя файла обязательно")
+
+        content = await video_file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Пустой файл")
+
+        object_key = s3_service.generate_task_object_key(
+            user_id, video_file.filename, prefix=f"trainings/{training_uuid}/video"
+        )
+        content_type = video_file.content_type or "video/mp4"
+        file_url = s3_service.upload_bytes_sync(
+            content, object_key, content_type=content_type
+        )
+
+        tasks_repo = TasksRepository(self.session)
+        task = await tasks_repo.create(
+            user_id=user_id,
+            file_url=file_url,
+            task_type=TaskType.VIDEO_PROCESSING.value,
+            status=TaskStatus.PENDING.value,
+            progress=0,
+            original_filename=video_file.filename,
+            training_uuid=training_uuid,
+        )
+
+        process_training_video_task.delay(str(task.id))
+
+        publish_task_notification(
+            user_id,
+            TaskNotificationPayload(
+                type="task_update",
+                task_id=str(task.id),
+                status=TaskStatus.PENDING.value,
+                progress=0,
+                message="Видео принято в обработку. Можно продолжать работу — шаги появятся автоматически.",
+                training_uuid=str(training_uuid),
+                task_type=TaskType.VIDEO_PROCESSING.value,
+            ),
+        )
+
+        return TaskCreateResponse(
+            task_id=task.id,
+            status=TaskStatusEnum.PENDING,
+            message="Видео принято в обработку",
+            training_uuid=training_uuid,
+        )
+
     async def add_steps_from_video(
         self,
         training_uuid: UUID4,
         video_file: UploadFile,
         video_ai_service: VideoAIService,
         s3_service: S3Service,
+        creator_id: Optional[int] = None,
     ) -> List[Dict]:
         """
-        Обрабатывает видео через AI-модель:
-        1. Отправляет видео в AI для анализа действий
-        2. Извлекает кадры по таймкодам
-        3. Загружает кадры в S3
-        4. Создаёт шаги с описанием и координатами области действия
+        Синхронная обработка (legacy). Предпочтительно start_async_video_processing.
         """
         try:
-            training_exists = await self.repo.check_training_exists(training_uuid)
-            if not training_exists:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Тренинг с UUID {training_uuid} не найден",
-                )
+            if creator_id is not None:
+                await self._require_training_owner(training_uuid, creator_id)
+            else:
+                training_exists = await self.repo.check_training_exists(training_uuid)
+                if not training_exists:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Тренинг с UUID {training_uuid} не найден",
+                    )
 
             ai_steps = await video_ai_service.analyze_video(video_file)
+            return await self.create_steps_from_ai_steps(
+                training_uuid=training_uuid,
+                ai_steps=ai_steps,
+                s3_service=s3_service,
+                creator_id=creator_id,
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            await self.session.rollback()
+            logger.exception("Ошибка AI-анализа видео и создания шагов")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Ошибка AI-анализа видео и создания шагов: {str(e)}",
+            )
 
-            if not ai_steps:
-                return []
+    async def create_steps_from_ai_steps(
+        self,
+        training_uuid: UUID4,
+        ai_steps: list,
+        s3_service: S3Service,
+        creator_id: Optional[int] = None,
+    ) -> List[Dict]:
+        """Создаёт шаги тренинга из результата AI-анализа видео."""
+        if creator_id is not None:
+            await self._require_training_owner(training_uuid, creator_id)
+        elif not await self.repo.check_training_exists(training_uuid):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Тренинг с UUID {training_uuid} не найден",
+            )
 
+        if not ai_steps:
+            return []
+
+        try:
             DEFAULT_ACTION_TYPE_ID = 1
 
             existing_steps = await self.repo.get_training_steps(training_uuid)
@@ -897,10 +995,10 @@ class TrainingsService:
             raise
         except Exception as e:
             await self.session.rollback()
-            logger.exception("Ошибка AI-анализа видео и создания шагов")
+            logger.exception("Ошибка создания шагов из AI-анализа")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Ошибка AI-анализа видео и создания шагов: {str(e)}",
+                detail=f"Ошибка создания шагов: {str(e)}",
             )
 
     async def _require_training_owner(
