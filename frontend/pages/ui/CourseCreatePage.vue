@@ -1,8 +1,8 @@
 <template>
 	<div class="course-page">
-		<div class="q-pa-lg animate-fade-in-up">
-			<h1 class="page-title text-h4 text-weight-bold q-mb-xs">Мои курсы</h1>
-			<p class="text-body2 text-grey-7">Собирайте курсы из существующих тренингов</p>
+		<div class="page-header animate-fade-in-up">
+			<h1 class="page-title">Мои курсы</h1>
+			<p class="page-subtitle">Собирайте курсы из существующих тренингов</p>
 		</div>
 
 		<div v-if="loading" class="loading-state q-pa-xl column items-center justify-center">
@@ -30,7 +30,7 @@
 			/>
 		</div>
 
-		<div v-else class="courses-grid q-px-lg q-pb-xl animate-stagger-children">
+		<div v-else class="courses-grid q-pb-xl animate-stagger-children">
 			<q-card class="course-card create-card" flat bordered @click="openCreateModal">
 				<q-card-section class="create-card-section">
 					<div class="column items-center justify-center full-height">
@@ -288,14 +288,40 @@ onMounted(async () => {
 
 <style scoped>
 .course-page {
+	padding: 32px 40px 24px;
 	min-height: 60vh;
 }
-.page-title {
-	color: #1a1a2e;
+
+/* ——— Header ——— */
+.page-header {
+	margin-bottom: 32px;
+	flex-shrink: 0;
+	position: relative;
+	z-index: 2;
 }
+
+.page-title {
+	font-size: 32px;
+	font-weight: 800;
+	color: #0f172a;
+	margin: 0 0 8px 0;
+	letter-spacing: -0.02em;
+	line-height: 1.2;
+}
+
+.page-subtitle {
+	font-size: 16px;
+	color: #64748b;
+	margin: 0;
+	font-weight: 500;
+	line-height: 1.5;
+}
+
 .loading-state,
 .empty-state {
 	min-height: 300px;
+	position: relative;
+	z-index: 2;
 }
 .loading-spinner {
 	animation: pulse-soft 1.2s var(--anim-ease-in-out) infinite;
@@ -313,20 +339,33 @@ onMounted(async () => {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
 	gap: 24px;
+	position: relative;
+	z-index: 2;
 }
 .course-card {
 	border-radius: 14px;
-	transition: transform 0.28s var(--anim-ease-spring), box-shadow 0.28s var(--anim-ease-out), border-color 0.2s ease;
-	border: 1px solid rgba(0, 0, 0, 0.08);
+	transition: transform 0.28s var(--anim-ease-spring), box-shadow 0.28s var(--anim-ease-out), border-color 0.2s ease, background 0.2s ease;
+	border: 1px solid rgba(0, 0, 0, 0.06);
+	background: rgba(255, 255, 255, 0.85);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
 }
 .course-card:hover {
 	transform: translateY(-5px);
-	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
-	border-color: rgba(80, 100, 247, 0.2);
+	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.06);
+	border-color: rgba(255, 255, 255, 1);
+	background: rgba(255, 255, 255, 0.9);
 }
 .create-card {
-	background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+	background: rgba(255, 255, 255, 0.4);
 	border: 2px dashed rgba(80, 100, 247, 0.35);
+	backdrop-filter: none;
+	-webkit-backdrop-filter: none;
+}
+.create-card:hover {
+	background: rgba(239, 246, 255, 0.6);
+	border-color: rgba(80, 100, 247, 0.6);
 }
 .create-card-section {
 	min-height: 200px;
@@ -397,5 +436,19 @@ onMounted(async () => {
 	max-height: 320px;
 	overflow: auto;
 	border-radius: 10px;
+}
+@media (max-width: 768px) {
+	.course-page {
+		padding: 24px 16px 20px;
+	}
+	.page-header {
+		margin-bottom: 24px;
+	}
+	.page-title {
+		font-size: 26px;
+	}
+	.page-subtitle {
+		font-size: 14px;
+	}
 }
 </style>

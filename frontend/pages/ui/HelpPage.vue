@@ -81,21 +81,25 @@ const faq = ref([
 .page-header {
 	margin-bottom: 32px;
 	flex-shrink: 0;
+	position: relative;
+	z-index: 2;
 }
 
 .page-title {
-	font-size: 28px;
-	font-weight: 600;
+	font-size: 32px;
+	font-weight: 800;
 	color: #0f172a;
-	margin: 0 0 6px 0;
+	margin: 0 0 8px 0;
 	letter-spacing: -0.02em;
+	line-height: 1.2;
 }
 
 .page-subtitle {
-	font-size: 15px;
+	font-size: 16px;
 	color: #64748b;
 	margin: 0;
-	font-weight: 400;
+	font-weight: 500;
+	line-height: 1.5;
 }
 
 /* ——— Help Content ——— */
@@ -103,6 +107,8 @@ const faq = ref([
 	max-width: 800px;
 	flex: 1;
 	min-height: 0;
+	position: relative;
+	z-index: 2;
 }
 
 /* ——— FAQ Section ——— */
@@ -114,14 +120,18 @@ const faq = ref([
 }
 
 .faq-item {
-	background: white;
-	border: 1px solid #e2e8f0;
+	background: rgba(255, 255, 255, 0.85);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border: 1px solid rgba(0, 0, 0, 0.06);
 	border-radius: 14px;
 	overflow: hidden;
-	transition: border-color 0.25s ease, box-shadow 0.25s var(--anim-ease-out);
+	box-shadow: 0 4px 16px rgba(15, 23, 42, 0.03);
+	transition: border-color 0.25s ease, box-shadow 0.25s var(--anim-ease-out), background 0.25s ease;
 }
 .faq-item:hover {
-	border-color: #cbd5e1;
+	background: rgba(255, 255, 255, 0.9);
+	border-color: rgba(255, 255, 255, 1);
 	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 .faq-item :deep(.q-expansion-item__container) {
@@ -131,6 +141,7 @@ const faq = ref([
 	transition: color 0.2s ease;
 }
 .faq-item[aria-expanded="true"] {
+	background: rgba(255, 255, 255, 0.95);
 	border-color: rgba(80, 100, 247, 0.3);
 	box-shadow: 0 2px 12px rgba(80, 100, 247, 0.06);
 }
@@ -151,8 +162,8 @@ const faq = ref([
 }
 
 .faq-answer {
-	background: #f8fafc;
-	border-top: 1px solid #e2e8f0;
+	background: transparent;
+	border-top: 1px solid rgba(0, 0, 0, 0.04);
 }
 
 .faq-answer :deep(.q-card__section) {
@@ -164,14 +175,18 @@ const faq = ref([
 
 /* ——— Quick Tips ——— */
 .quick-tips {
-	background: white;
-	border: 1px solid #e2e8f0;
+	background: rgba(255, 255, 255, 0.85);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border: 1px solid rgba(0, 0, 0, 0.06);
 	border-radius: 16px;
 	padding: 28px 32px;
 	position: relative;
-	transition: border-color 0.25s ease, box-shadow 0.25s var(--anim-ease-out);
+	box-shadow: 0 4px 16px rgba(15, 23, 42, 0.03);
+	transition: border-color 0.25s ease, box-shadow 0.25s var(--anim-ease-out), background 0.25s ease;
 }
 .quick-tips:hover {
+	background: rgba(255, 255, 255, 0.9);
 	border-color: rgba(245, 158, 11, 0.3);
 	box-shadow: 0 4px 20px rgba(245, 158, 11, 0.08);
 }

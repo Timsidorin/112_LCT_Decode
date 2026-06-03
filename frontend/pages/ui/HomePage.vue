@@ -1,36 +1,13 @@
 <template>
 	<div class="home-page">
 		<div class="home-inner">
-			<div class="home-hero-wrapper animate-fade-in-down">
-				<header class="home-hero">
-					<div class="home-hero__row">
-						<q-avatar
-							v-if="userStore.isYandexUser"
-							size="80px"
-							class="home-hero__avatar"
-						>
-							<img
-								v-if="userStore.photo"
-								:src="userStore.photo"
-								alt=""
-							/>
-							<img
-								v-else
-								src="/icons/yandex.svg"
-								alt=""
-								class="home-hero__yandex-fallback"
-							/>
-						</q-avatar>
-						<div class="home-hero__text">
-							<h1 class="home-hero__title">
-								Добро пожаловать, {{ userStore.fullName }}
-							</h1>
-							<p class="home-hero__subtitle">
-								Управляйте тренингами и следите за прогрессом
-							</p>
-						</div>
-					</div>
-				</header>
+			<div class="page-header animate-fade-in-up">
+				<h1 class="page-title">
+					Добро пожаловать, {{ userStore.fullName }}
+				</h1>
+				<p class="page-subtitle">
+					Управляйте тренингами и следите за прогрессом
+				</p>
 			</div>
 
 			<div v-if="loading" class="home-loading">
@@ -39,6 +16,8 @@
 			</div>
 
 			<div v-else class="home-stack animate-stagger-children">
+				<MediaUploadPanel />
+
 				<!-- Сводка -->
 				<section class="home-panel" aria-labelledby="home-summary-heading">
 					<div class="home-panel__head">
@@ -88,9 +67,10 @@
 					</div>
 					<div class="quick-actions">
 						<div
-							class="action-item"
+							class="action-item relative-position"
 							role="button"
 							tabindex="0"
+							v-ripple
 							@click="$router.push('/personal/training')"
 							@keydown.enter="$router.push('/personal/training')"
 						>
@@ -104,9 +84,10 @@
 							<q-icon name="arrow_forward" size="20px" class="action-arrow" />
 						</div>
 						<div
-							class="action-item"
+							class="action-item relative-position"
 							role="button"
 							tabindex="0"
+							v-ripple
 							@click="$router.push('/personal/library')"
 							@keydown.enter="$router.push('/personal/library')"
 						>
@@ -120,9 +101,10 @@
 							<q-icon name="arrow_forward" size="20px" class="action-arrow" />
 						</div>
 						<div
-							class="action-item"
+							class="action-item relative-position"
 							role="button"
 							tabindex="0"
+							v-ripple
 							@click="$router.push('/personal/courses')"
 							@keydown.enter="$router.push('/personal/courses')"
 						>
@@ -163,7 +145,8 @@
 						<div
 							v-for="training in recentTrainings"
 							:key="training.uuid"
-							class="training-card"
+							class="training-card relative-position"
+							v-ripple
 							@click="openEdit(training.uuid)"
 						>
 							<div class="training-header">
@@ -178,7 +161,7 @@
 							<div class="training-meta">
 								<div class="training-meta-item">
 									<q-icon name="layers" size="16px" />
-									<span>{{ training.steps?.length || 0 }} шагов</span>
+									<span>{{ training.steps_count ?? training.steps?.length ?? 0 }} шагов</span>
 								</div>
 							</div>
 						</div>
@@ -217,6 +200,7 @@ import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useUserStore } from "@store/userData.js";
 import { TrainingApi } from "@api";
+import MediaUploadPanel from "@components/features/tasks/MediaUploadPanel.vue";
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -264,70 +248,28 @@ onMounted(async () => {
 	padding: 32px 32px 48px;
 }
 
-/* ——— Hero ——— */
-.home-hero-wrapper {
-	background: rgba(255, 255, 255, 0.55);
-	backdrop-filter: blur(24px);
-	-webkit-backdrop-filter: blur(24px);
-	border: 1px solid rgba(255, 255, 255, 0.8);
-	border-radius: 24px;
-	padding: 40px 32px;
+/* ——— Header ——— */
+.page-header {
 	margin-bottom: 32px;
-	box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05);
-	color: #1a1a2e;
+	position: relative;
+	z-index: 2;
 }
 
-.home-hero {
-	width: 100%;
-}
-
-.home-hero__row {
-	display: flex;
-	align-items: center;
-	gap: 24px;
-	flex-wrap: wrap;
-}
-
-.home-hero__avatar {
-	flex-shrink: 0;
-	border: 4px solid rgba(255, 255, 255, 0.8);
-	box-shadow: 0 8px 24px rgba(80, 100, 247, 0.15);
-	background: white;
-}
-
-.home-hero__avatar img {
-	object-fit: cover;
-	width: 100%;
-	height: 100%;
-}
-
-.home-hero__yandex-fallback {
-	padding: 12px;
-	object-fit: contain !important;
-	background: #fff;
-}
-
-.home-hero__text {
-	min-width: 0;
-	flex: 1;
-}
-
-.home-hero__title {
+.page-title {
 	font-size: 32px;
 	font-weight: 800;
-	color: #1a1a2e;
+	color: #0f172a;
 	margin: 0 0 8px 0;
 	letter-spacing: -0.02em;
 	line-height: 1.2;
 }
 
-.home-hero__subtitle {
+.page-subtitle {
 	font-size: 16px;
 	color: #64748b;
 	margin: 0;
 	font-weight: 500;
 	line-height: 1.5;
-	max-width: 40em;
 }
 
 /* ——— Loading ——— */
@@ -356,19 +298,24 @@ onMounted(async () => {
 	display: flex;
 	flex-direction: column;
 	gap: 32px;
+	position: relative;
+	z-index: 2;
 }
 
 .home-panel {
-	background: #ffffff;
-	border: 1px solid rgba(226, 232, 240, 0.8);
+	background: rgba(255, 255, 255, 0.85);
+	backdrop-filter: blur(24px);
+	-webkit-backdrop-filter: blur(24px);
+	border: 1px solid rgba(0, 0, 0, 0.06);
 	border-radius: 20px;
 	padding: 28px 32px;
-	box-shadow: 0 4px 20px rgba(15, 23, 42, 0.03);
-	transition: box-shadow 0.3s ease;
+	box-shadow: 0 8px 32px rgba(15, 23, 42, 0.04);
+	transition: box-shadow 0.3s ease, transform 0.3s ease;
 }
 
 .home-panel:hover {
-	box-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
+	box-shadow: 0 12px 32px rgba(80, 100, 247, 0.06);
+	transform: translateY(-2px);
 }
 
 .home-panel--grow {
@@ -418,8 +365,10 @@ onMounted(async () => {
 }
 
 .stat-card {
-	background: #ffffff;
-	border: 1px solid #e2e8f0;
+	background: rgba(255, 255, 255, 0.85);
+	backdrop-filter: blur(24px);
+	-webkit-backdrop-filter: blur(24px);
+	border: 1px solid rgba(0, 0, 0, 0.06);
 	border-radius: 16px;
 	padding: 20px;
 	display: flex;
@@ -428,6 +377,7 @@ onMounted(async () => {
 	transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 	position: relative;
 	overflow: hidden;
+	box-shadow: 0 4px 16px rgba(15, 23, 42, 0.03);
 }
 
 .stat-card::before {
@@ -465,6 +415,8 @@ onMounted(async () => {
 	justify-content: center;
 	color: #5064f7;
 	flex-shrink: 0;
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
 }
 
 .stat-card--success .stat-icon {
@@ -506,8 +458,10 @@ onMounted(async () => {
 }
 
 .action-item {
-	background: #ffffff;
-	border: 1px solid #e2e8f0;
+	background: rgba(255, 255, 255, 0.85);
+	backdrop-filter: blur(24px);
+	-webkit-backdrop-filter: blur(24px);
+	border: 1px solid rgba(0, 0, 0, 0.06);
 	border-radius: 16px;
 	padding: 20px;
 	display: flex;
@@ -516,14 +470,15 @@ onMounted(async () => {
 	cursor: pointer;
 	transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 	outline: none;
+	box-shadow: 0 4px 16px rgba(15, 23, 42, 0.03);
 }
 
 .action-item:hover,
 .action-item:focus-visible {
-	border-color: #5064f7;
-	background: #f8fafc;
+	border-color: rgba(80, 100, 247, 0.3);
+	background: #ffffff;
 	transform: translateY(-2px);
-	box-shadow: 0 10px 25px rgba(80, 100, 247, 0.1);
+	box-shadow: 0 10px 25px rgba(80, 100, 247, 0.08);
 }
 
 .action-item:focus-visible {
@@ -547,6 +502,8 @@ onMounted(async () => {
 	color: #5064f7;
 	flex-shrink: 0;
 	transition: background 0.25s ease, color 0.25s ease;
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
 }
 
 .action-item:hover .action-icon {
@@ -590,8 +547,10 @@ onMounted(async () => {
 }
 
 .training-card {
-	background: #ffffff;
-	border: 1px solid #e2e8f0;
+	background: rgba(255, 255, 255, 0.85);
+	backdrop-filter: blur(24px);
+	-webkit-backdrop-filter: blur(24px);
+	border: 1px solid rgba(0, 0, 0, 0.06);
 	border-radius: 16px;
 	padding: 20px;
 	cursor: pointer;
@@ -599,10 +558,12 @@ onMounted(async () => {
 	display: flex;
 	flex-direction: column;
 	height: 100%;
+	box-shadow: 0 4px 16px rgba(15, 23, 42, 0.03);
 }
 
 .training-card:hover {
-	border-color: #5064f7;
+	border-color: rgba(80, 100, 247, 0.3);
+	background: #ffffff;
 	box-shadow: 0 12px 30px rgba(80, 100, 247, 0.08);
 	transform: translateY(-3px);
 }
@@ -671,8 +632,12 @@ onMounted(async () => {
 /* ——— Empty ——— */
 .home-panel--empty {
 	padding: 60px 32px;
-	background: #f8fafc;
-	border: 2px dashed #e2e8f0;
+	background: rgba(255, 255, 255, 0.6);
+	backdrop-filter: blur(24px);
+	-webkit-backdrop-filter: blur(24px);
+	border: 2px dashed rgba(15, 23, 42, 0.1);
+	box-shadow: none;
+	border-radius: 20px;
 }
 
 .empty-inner {
@@ -695,6 +660,8 @@ onMounted(async () => {
 	color: #5064f7;
 	margin-bottom: 24px;
 	box-shadow: 0 8px 24px rgba(80, 100, 247, 0.15);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
 }
 
 .empty-title {
@@ -731,11 +698,11 @@ onMounted(async () => {
 		padding: 24px 24px 32px;
 	}
 	
-	.home-hero-wrapper {
-		padding: 32px 24px;
+	.page-header {
+		margin-bottom: 24px;
 	}
 	
-	.home-hero__title {
+	.page-title {
 		font-size: 26px;
 	}
 }
@@ -745,17 +712,12 @@ onMounted(async () => {
 		padding: 16px 16px 24px;
 	}
 
-	.home-hero-wrapper {
-		padding: 24px 16px;
+	.page-header {
+		margin-bottom: 20px;
+		text-align: center;
 	}
 	
-	.home-hero__row {
-		flex-direction: column;
-		text-align: center;
-		gap: 16px;
-	}
-
-	.home-hero__title {
+	.page-title {
 		font-size: 22px;
 	}
 

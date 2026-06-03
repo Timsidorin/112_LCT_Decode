@@ -72,7 +72,11 @@
 		</q-drawer>
 
 		<q-page-container class="page-container">
-			<router-view />
+			<router-view v-slot="{ Component }">
+				<transition name="fade-page" mode="out-in">
+					<component :is="Component" />
+				</transition>
+			</router-view>
 		</q-page-container>
 	</q-layout>
 </template>
@@ -81,6 +85,7 @@
 import { ref } from "vue";
 import UserCard from "@components/features/personal_page/header/UserCard.vue";
 import { useUserStore } from "@store/userData.js";
+import { useNotificationsStore } from "@store/notifications.js";
 
 export default {
 	name: "BaseLayout",
@@ -90,6 +95,12 @@ export default {
 		if (token && !useUserStore().isLoaded) {
 			await useUserStore().fetchUser();
 		}
+		if (token) {
+			useNotificationsStore().connect();
+		}
+	},
+	beforeUnmount() {
+		useNotificationsStore().disconnect();
 	},
 	setup() {
 		const drawerLeft = ref(false);
@@ -109,24 +120,50 @@ export default {
 
 <style scoped>
 /*
- * Фон личного кабинета: лёгкий градиент + мягкие блики в фирменных тонах.
- * Откат к плоскому серому: .base-layout { background: #f5f6fa; } и .page-container { background: #f5f6fa; }
+ * Фон личного кабинета: современный мягкий градиент
  */
 .base-layout {
-	background-color: #e8ecf4;
-	background-image:
-		radial-gradient(ellipse 110% 90% at 0% -15%, rgba(80, 100, 247, 0.14), transparent 58%),
-		radial-gradient(ellipse 85% 75% at 100% 5%, rgba(124, 108, 240, 0.09), transparent 52%),
-		radial-gradient(ellipse 90% 55% at 50% 105%, rgba(80, 100, 247, 0.06), transparent 55%),
-		linear-gradient(168deg, #e6eaf4 0%, #eceff6 38%, #f0f2f8 72%, #f4f5fa 100%);
+	background-color: #eef2f6;
+	background-image: 
+		radial-gradient(circle at 15% 50%, rgba(80, 100, 247, 0.12) 0, transparent 50%), 
+		radial-gradient(circle at 85% 30%, rgba(168, 85, 247, 0.08) 0, transparent 50%), 
+		radial-gradient(circle at 50% 100%, rgba(80, 100, 247, 0.1) 0, transparent 50%);
 	min-height: 100vh;
+	position: relative;
 }
 
-/* Шапка чуть светлее и с лёгким размытием — визуально из того же «воздуха», что и фон */
+.base-layout::before {
+	content: "";
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-image: radial-gradient(rgba(15, 23, 42, 0.05) 1px, transparent 1px);
+	background-size: 24px 24px;
+	pointer-events: none;
+	z-index: 0;
+}
+
+.base-layout::after {
+	content: "";
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 400px;
+	background: linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 100%);
+	pointer-events: none;
+	z-index: 0;
+}
+
+/* Шапка чуть светлее и с лёгким размытием */
 .header {
-	background: rgba(244, 245, 250, 0.82) !important;
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
+	background: rgba(255, 255, 255, 0.85) !important;
+	backdrop-filter: blur(24px);
+	-webkit-backdrop-filter: blur(24px);
+	border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+	box-shadow: 0 4px 20px rgba(15, 23, 42, 0.02);
 }
 
 .toolbar {
@@ -231,16 +268,16 @@ export default {
 }
 
 .drawer {
-	background: rgba(255, 255, 255, 0.4) !important;
-	backdrop-filter: blur(20px);
-	-webkit-backdrop-filter: blur(20px);
-	border-right: 1px solid rgba(255, 255, 255, 0.5) !important;
+	background: rgba(255, 255, 255, 0.85) !important;
+	backdrop-filter: blur(24px);
+	-webkit-backdrop-filter: blur(24px);
+	border-right: 1px solid rgba(0, 0, 0, 0.06) !important;
 }
 
 :deep(.q-drawer) {
-	background: rgba(255, 255, 255, 0.4) !important;
-	backdrop-filter: blur(20px);
-	-webkit-backdrop-filter: blur(20px);
+	background: rgba(255, 255, 255, 0.85) !important;
+	backdrop-filter: blur(24px);
+	-webkit-backdrop-filter: blur(24px);
 }
 
 :deep(.q-drawer__content) {
@@ -263,19 +300,19 @@ export default {
 }
 
 .drawer-nav-item {
-	margin: 4px 10px;
-	border-radius: 12px;
-	transition: all 0.3s ease;
+	margin: 4px 12px;
+	border-radius: 10px;
+	transition: all 0.25s ease;
 	animation: fadeInUp 0.35s var(--anim-ease-out) backwards;
 	animation-delay: calc(0.04s * (var(--stagger, 0) + 1));
 	background: transparent;
 	border: 1px solid transparent;
+	color: #64748b;
 }
 
 .drawer-nav-item:hover {
-	background: rgba(255, 255, 255, 0.6);
-	border-color: rgba(255, 255, 255, 0.8);
-	box-shadow: 0 4px 12px rgba(31, 38, 135, 0.05);
+	background: rgba(80, 100, 247, 0.04);
+	color: #0f172a;
 }
 
 .drawer-nav-item:active {
@@ -283,10 +320,10 @@ export default {
 }
 
 .drawer-nav-item--active {
-	background: rgba(255, 255, 255, 0.85) !important;
+	background: #ffffff !important;
 	color: #5064f7;
-	border-color: rgba(255, 255, 255, 1);
-	box-shadow: 0 8px 20px rgba(80, 100, 247, 0.12);
+	border-color: rgba(0, 0, 0, 0.04);
+	box-shadow: 0 4px 12px rgba(80, 100, 247, 0.06);
 }
 
 .drawer-nav-item--active :deep(.drawer-nav-icon) {
@@ -300,6 +337,24 @@ export default {
 
 .page-container {
 	background: transparent;
+	position: relative;
+	z-index: 1;
+}
+
+/* Анимация переходов между страницами */
+.fade-page-enter-active,
+.fade-page-leave-active {
+	transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.fade-page-enter-from {
+	opacity: 0;
+	transform: translateY(8px);
+}
+
+.fade-page-leave-to {
+	opacity: 0;
+	transform: translateY(-8px);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,26 +1,45 @@
 <template>
 	<div class="training-page">
 		<!-- Заголовок страницы -->
-		<div class="q-pa-lg animate-fade-in-up">
-			<h1 class="page-title text-h4 text-weight-bold q-mb-xs">Мои тренинги</h1>
-			<p class="text-body2 text-grey-7">Создавайте и управляйте интерактивными тренингами</p>
+		<div class="page-header page-header--with-actions animate-fade-in-up">
+			<div>
+				<h1 class="page-title">Мои тренинги</h1>
+				<p class="page-subtitle">Создавайте и управляйте обучающими материалами</p>
+			</div>
+			<div class="header-actions row items-center q-gutter-sm">
+				<q-input outlined dense v-model="searchQuery" placeholder="Поиск..." class="search-input bg-white" color="primary" clearable>
+					<template v-slot:prepend>
+						<q-icon name="search" />
+					</template>
+				</q-input>
+				<q-btn unelevated color="primary" icon="add" label="Создать" class="create-btn text-weight-bold shadow-4 q-px-md" @click="openCreateModal" />
+			</div>
 		</div>
+
+		<!-- Фильтры -->
+		<q-tabs v-model="filterTab" dense class="text-grey-7 q-mb-lg animate-fade-in-up" active-color="primary" indicator-color="primary" align="left" narrow-indicator>
+			<q-tab name="all" label="Все" />
+			<q-tab name="published" label="Опубликованные" />
+			<q-tab name="drafts" label="Черновики" />
+		</q-tabs>
 
 		<!-- Состояние загрузки -->
 		<div v-if="status" class="loading-state q-pa-xl column items-center justify-center">
-			<q-spinner-gears size="48px" color="primary" class="loading-spinner" />
+			<q-spinner-dots size="48px" color="primary" class="loading-spinner" />
 			<p class="text-grey-7 q-mt-md loading-text">Загрузка тренингов...</p>
 		</div>
 
 		<!-- Пустое состояние -->
 		<div
-			v-else-if="trainings.length === 0"
+			v-else-if="filteredTrainings.length === 0 && trainings.length === 0"
 			class="empty-state q-pa-xl column items-center justify-center animate-scale-in"
 		>
-			<q-icon name="school" size="80px" color="grey-4" class="q-mb-lg empty-icon" />
-			<p class="text-h6 text-grey-8 q-mb-xs">Пока нет тренингов</p>
-			<p class="text-body2 text-grey-6 text-center q-mb-lg">
-				Создайте первый тренинг и начните обучать с помощью интерактивных скриншотов
+			<div class="empty-icon-wrap q-mb-lg">
+				<q-icon name="school" size="64px" color="primary" />
+			</div>
+			<h3 class="text-h5 text-weight-bold text-dark q-mb-sm">Пока нет тренингов</h3>
+			<p class="text-body1 text-grey-6 text-center q-mb-lg max-w-md">
+				Создайте первый тренинг и начните обучать с помощью интерактивных скриншотов.
 			</p>
 			<q-btn
 				unelevated
@@ -29,127 +48,131 @@
 				size="lg"
 				icon="add"
 				label="Создать тренинг"
+				class="shadow-4 text-weight-bold q-px-xl"
+				style="border-radius: 12px;"
 				@click="openCreateModal"
 			/>
 		</div>
 
+		<!-- Пустое состояние при поиске -->
+		<div
+			v-else-if="filteredTrainings.length === 0"
+			class="empty-state q-pa-xl column items-center justify-center animate-scale-in"
+		>
+			<q-icon name="search_off" size="64px" color="grey-4" class="q-mb-md" />
+			<h3 class="text-h6 text-weight-bold text-dark q-mb-sm">Ничего не найдено</h3>
+			<p class="text-body2 text-grey-6 text-center">
+				По вашему запросу не найдено ни одного тренинга.
+			</p>
+			<q-btn flat color="primary" label="Сбросить фильтры" class="q-mt-sm" @click="searchQuery = ''; filterTab = 'all'" />
+		</div>
+
 		<!-- Сетка карточек -->
-		<div v-else class="trainings-grid q-px-lg q-pb-xl animate-stagger-children">
+		<div v-else class="trainings-grid q-pb-xl animate-stagger-children">
 			<!-- Карточка создания -->
-			<q-card class="training-card create-card" flat bordered @click="openCreateModal">
-				<q-card-section class="create-card-section">
-					<div class="column items-center justify-center full-height">
-						<div class="create-icon-wrap">
-							<q-icon name="add" size="40px" color="primary" />
-						</div>
-						<p class="create-title text-weight-bold">Создать тренинг</p>
-						<p class="create-subtitle text-body2 text-grey-6">Добавить новый тренинг</p>
+			<q-card v-if="filterTab === 'all' && !searchQuery" class="training-card create-card" flat bordered v-ripple @click="openCreateModal">
+				<q-card-section class="create-card-section column items-center justify-center full-height text-center">
+					<div class="create-icon-wrap">
+						<q-icon name="add" size="36px" color="primary" />
 					</div>
+					<div class="text-h6 text-weight-bold text-primary q-mb-xs">Новый тренинг</div>
+					<div class="text-body2 text-grey-6">Нажмите, чтобы создать</div>
 				</q-card-section>
 			</q-card>
 
 			<!-- Карточки тренингов -->
 			<q-card
-				v-for="training in trainings"
+				v-for="training in filteredTrainings"
 				:key="training.uuid"
-				class="training-card"
+				class="training-card relative-position"
 				flat
 				bordered
+				v-ripple
 				@click="editTraining(training.uuid)"
 			>
 				<q-card-section class="card-content">
-					<div class="row no-wrap items-start q-mb-md">
-						<div class="card-icon">
-							<q-icon name="playlist_add_check" size="32px" color="primary" />
+					<div class="row items-center justify-between q-mb-sm">
+						<div class="status-pill" :class="training.publish ? 'status-published' : 'status-draft'">
+							<div class="status-dot"></div>
+							{{ training.publish ? 'Опубликован' : 'Черновик' }}
 						</div>
-						<div class="col q-pl-md overflow-hidden">
-							<p class="card-title text-weight-bold text-body1 ellipsis">{{ training.title }}</p>
-							<p class="text-caption text-grey-7 q-mb-sm">
-								{{ training.level?.label ?? "Без уровня" }}
-								<span v-if="training.duration_minutes" class="q-ml-sm">
-									· {{ training.duration_minutes }} мин
-								</span>
-							</p>
-						</div>
+						<q-btn-dropdown
+							flat
+							round
+							dense
+							color="grey-6"
+							dropdown-icon="more_vert"
+							class="training-card-menu-trigger"
+							content-class="training-card-actions-menu"
+							:menu-offset="[0, 8]"
+							@click.stop
+						>
+							<q-list dense class="training-card-actions-list">
+								<q-item clickable v-close-popup @click="editTraining(training.uuid)">
+									<q-item-section avatar>
+										<q-icon name="edit" size="sm" />
+									</q-item-section>
+									<q-item-section>Редактировать шаги</q-item-section>
+								</q-item>
+								<q-item clickable v-close-popup @click="openSettingsData(training)">
+									<q-item-section avatar>
+										<q-icon name="settings" size="sm" />
+									</q-item-section>
+									<q-item-section>Настройки</q-item-section>
+								</q-item>
+								<q-item clickable v-close-popup @click="openPublishModal(training)">
+									<q-item-section avatar>
+										<q-icon :name="training.publish ? 'share' : 'publish'" size="sm" color="primary" />
+									</q-item-section>
+									<q-item-section>{{ training.publish ? 'Поделиться' : 'Опубликовать' }}</q-item-section>
+								</q-item>
+								<q-item
+									v-if="training.publish"
+									clickable
+									v-close-popup
+									@click="openPassageStats(training)"
+								>
+									<q-item-section avatar>
+										<q-icon name="bar_chart" size="sm" color="primary" />
+									</q-item-section>
+									<q-item-section>Статистика</q-item-section>
+								</q-item>
+								<q-item v-if="training.publish" clickable v-close-popup @click="confirmUnpublish(training)">
+									<q-item-section avatar>
+										<q-icon name="link_off" size="sm" color="grey-7" />
+									</q-item-section>
+									<q-item-section>Снять с публикации</q-item-section>
+								</q-item>
+								<q-separator class="q-my-xs" />
+								<q-item clickable v-close-popup @click="confirmDelete(training)">
+									<q-item-section avatar>
+										<q-icon name="delete" size="sm" color="negative" />
+									</q-item-section>
+									<q-item-section class="text-negative">Удалить</q-item-section>
+								</q-item>
+							</q-list>
+						</q-btn-dropdown>
 					</div>
 
-					<p v-if="training.description" class="card-description text-body2 text-grey-8 ellipsis-2 q-mb-md">
-						{{ training.description }}
+					<div class="text-h6 text-weight-bold text-dark ellipsis q-mb-xs" :title="training.title">{{ training.title }}</div>
+					
+					<div class="row items-center text-caption text-grey-6 q-mb-md q-gutter-x-md">
+						<span class="row items-center"><q-icon name="layers" size="18px" class="q-mr-xs"/> {{ training.steps_count ?? training.steps?.length ?? 0 }} шагов</span>
+						<span v-if="training.duration_minutes" class="row items-center"><q-icon name="schedule" size="18px" class="q-mr-xs"/> {{ training.duration_minutes }} мин</span>
+						<span v-if="training.level" class="row items-center"><q-icon name="trending_up" size="18px" class="q-mr-xs"/> {{ training.level.label }}</span>
+					</div>
+
+					<p class="card-description text-body2 text-grey-7 ellipsis-2 q-mb-md">
+						{{ training.description || 'Описание отсутствует. Добавьте его в настройках тренинга.' }}
 					</p>
 
-					<div v-if="training.tags?.length" class="q-gutter-xs q-mb-md">
+					<div class="row q-gutter-sm q-mt-auto">
 						<q-badge
 							v-for="tag in training.tags"
 							:key="tag.value"
 							class="badge-tag"
 							:label="tag.label"
 						/>
-					</div>
-
-					<div class="row items-center justify-between card-footer">
-						<q-badge
-							v-if="training.publish"
-							class="status-badge published"
-							label="Опубликовано"
-						/>
-						<span v-else class="status-draft text-caption text-grey-6">Черновик</span>
-						<q-btn-dropdown
-							flat
-							round
-							dense
-							color="grey-7"
-							dropdown-icon="more_vert"
-							class="training-card-menu-trigger"
-							content-class="training-card-actions-menu"
-							:menu-offset="[0, 8]"
-							toggle-aria-label="Действия с тренингом"
-							@click.stop
-						>
-						<q-list dense class="training-card-actions-list">
-							<q-item clickable v-close-popup @click="editTraining(training.uuid)">
-								<q-item-section avatar>
-									<q-icon name="edit" size="sm" />
-								</q-item-section>
-								<q-item-section>Редактировать шаги</q-item-section>
-							</q-item>
-							<q-item clickable v-close-popup @click="openSettingsData(training)">
-								<q-item-section avatar>
-									<q-icon name="settings" size="sm" />
-								</q-item-section>
-								<q-item-section>Настройки</q-item-section>
-							</q-item>
-							<q-item clickable v-close-popup @click="openPublishModal(training)">
-								<q-item-section avatar>
-									<q-icon :name="training.publish ? 'share' : 'publish'" size="sm" color="primary" />
-								</q-item-section>
-								<q-item-section>{{ training.publish ? 'Поделиться' : 'Опубликовать' }}</q-item-section>
-							</q-item>
-							<q-item
-								v-if="training.publish"
-								clickable
-								v-close-popup
-								@click="openPassageStats(training)"
-							>
-								<q-item-section avatar>
-									<q-icon name="bar_chart" size="sm" color="primary" />
-								</q-item-section>
-								<q-item-section>Статистика</q-item-section>
-							</q-item>
-							<q-item v-if="training.publish" clickable v-close-popup @click="confirmUnpublish(training)">
-								<q-item-section avatar>
-									<q-icon name="link_off" size="sm" color="grey-7" />
-								</q-item-section>
-								<q-item-section>Снять с публикации</q-item-section>
-							</q-item>
-							<q-separator class="q-my-xs" />
-							<q-item clickable v-close-popup @click="confirmDelete(training)">
-								<q-item-section avatar>
-									<q-icon name="delete" size="sm" color="negative" />
-								</q-item-section>
-								<q-item-section class="text-negative">Удалить</q-item-section>
-							</q-item>
-						</q-list>
-						</q-btn-dropdown>
 					</div>
 				</q-card-section>
 			</q-card>
@@ -331,6 +354,29 @@ const modalMode = ref("create");
 const editingTraining = ref(null);
 const publishModal = ref(false);
 const publishTrainingData = ref(null);
+
+const searchQuery = ref("");
+const filterTab = ref("all");
+
+const filteredTrainings = computed(() => {
+	let result = trainings.value;
+	
+	if (filterTab.value === 'published') {
+		result = result.filter(t => t.publish);
+	} else if (filterTab.value === 'drafts') {
+		result = result.filter(t => !t.publish);
+	}
+	
+	if (searchQuery.value) {
+		const q = searchQuery.value.toLowerCase();
+		result = result.filter(t => 
+			t.title.toLowerCase().includes(q) || 
+			(t.description && t.description.toLowerCase().includes(q))
+		);
+	}
+	
+	return result;
+});
 
 function openCreateModal() {
 	modalMode.value = "create";
@@ -524,163 +570,209 @@ onUnmounted(() => {
 <style scoped>
 .training-page {
 	min-height: 60vh;
+	max-width: 1400px;
+	margin: 0 auto;
+	padding: 32px 40px 24px;
+}
+
+/* ——— Header ——— */
+.page-header {
+	margin-bottom: 32px;
+	position: relative;
+	z-index: 2;
+}
+
+.page-header--with-actions {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 16px;
 }
 
 .page-title {
-	color: #1a1a2e;
+	font-size: 32px;
+	font-weight: 800;
+	color: #0f172a;
+	margin: 0 0 8px 0;
+	letter-spacing: -0.02em;
+	line-height: 1.2;
 }
 
-.loading-state,
-.empty-state {
-	min-height: 300px;
-}
-.loading-spinner {
-	animation: pulse-soft 1.2s var(--anim-ease-in-out) infinite;
-}
-.loading-text {
+.page-subtitle {
+	font-size: 16px;
+	color: #64748b;
+	margin: 0;
 	font-weight: 500;
+	line-height: 1.5;
 }
-.empty-icon {
-	transition: transform 0.4s var(--anim-ease-spring);
+
+.search-input {
+	width: 260px;
 }
-.empty-state:hover .empty-icon {
-	transform: scale(1.05);
+.search-input :deep(.q-field__control) {
+	border-radius: 12px;
+}
+
+.create-btn {
+	border-radius: 12px;
+	height: 40px;
+}
+
+.loading-state {
+	position: relative;
+	z-index: 2;
+}
+
+.empty-icon-wrap {
+	width: 120px;
+	height: 120px;
+	border-radius: 32px;
+	background: rgba(80, 100, 247, 0.1);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+}
+
+.empty-state {
+	position: relative;
+	z-index: 2;
+}
+
+.max-w-md {
+	max-width: 400px;
 }
 
 .trainings-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+	grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
 	gap: 24px;
+	position: relative;
+	z-index: 2;
 }
 
 .training-card {
-	border-radius: 14px;
+	border-radius: 20px;
 	cursor: pointer;
-	transition: transform 0.28s var(--anim-ease-spring), box-shadow 0.28s var(--anim-ease-out), border-color 0.2s ease;
-	border: 1px solid rgba(0, 0, 0, 0.08);
+	transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+	border: 1px solid rgba(0, 0, 0, 0.06);
+	background: rgba(255, 255, 255, 0.85);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	display: flex;
+	flex-direction: column;
+	height: 250px;
+	box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
 }
+
 .training-card:hover {
-	transform: translateY(-5px);
-	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
-	border-color: rgba(80, 100, 247, 0.2);
-}
-.training-card:active {
-	transform: translateY(-2px);
-}
-
-.create-card {
-	background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
-	border: 2px dashed rgba(80, 100, 247, 0.35);
-	transition: border-color 0.25s ease, background 0.3s ease, transform 0.28s var(--anim-ease-spring), box-shadow 0.28s ease;
-}
-.create-card:hover {
-	border-color: rgba(80, 100, 247, 0.55);
-	background: linear-gradient(135deg, #f0f4ff 0%, #e8eeff 100%);
-	box-shadow: 0 8px 24px rgba(80, 100, 247, 0.12);
-	transform: translateY(-4px);
-}
-
-.create-card-section {
-	min-height: 200px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.create-icon-wrap {
-	width: 72px;
-	height: 72px;
-	border-radius: 50%;
-	background: rgba(80, 100, 247, 0.12);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	margin-bottom: 12px;
-	transition: transform 0.35s var(--anim-ease-spring), background 0.3s ease;
-}
-.create-card:hover .create-icon-wrap {
-	transform: scale(1.1);
-	background: rgba(80, 100, 247, 0.18);
-}
-
-.create-title {
-	font-size: 18px;
-	color: #5064f7;
-}
-
-.create-subtitle {
-	font-size: 14px;
+	transform: translateY(-6px);
+	box-shadow: 0 20px 40px rgba(15, 23, 42, 0.06);
+	border-color: rgba(255, 255, 255, 1);
+	background: rgba(255, 255, 255, 0.9);
 }
 
 .card-content {
-	padding: 20px;
-}
-
-.card-icon {
-	width: 48px;
-	height: 48px;
-	border-radius: 12px;
-	background: rgba(80, 100, 247, 0.1);
+	padding: 24px;
+	flex: 1;
 	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-	transition: transform 0.3s var(--anim-ease-spring);
-}
-.training-card:hover .card-icon {
-	transform: scale(1.06);
+	flex-direction: column;
 }
 
-.card-title {
-	font-size: 16px;
-	color: #1a1a2e;
+.status-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px;
+	border-radius: 10px;
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+}
+
+.status-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+}
+
+.status-published {
+	background: #ecfdf5;
+	color: #059669;
+	border: 1px solid #d1fae5;
+}
+.status-published .status-dot {
+	background: #10b981;
+	box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.status-draft {
+	background: #f8fafc;
+	color: #475569;
+	border: 1px solid #e2e8f0;
+}
+.status-draft .status-dot {
+	background: #94a3b8;
+}
+
+.training-card-menu-trigger {
+	margin-right: -8px;
+	margin-top: -4px;
+	opacity: 0.88;
+	transition: opacity 0.2s ease, background 0.2s ease;
 }
 
 .card-description {
-	max-height: 2.6em;
-	line-height: 1.3;
-}
-
-.ellipsis {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.ellipsis-2 {
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
+	line-height: 1.5;
+	flex: 1;
 }
 
 .badge-tag {
-	background: rgba(80, 100, 247, 0.1);
-	color: #5064f7;
-	border-radius: 6px;
-	padding: 4px 10px;
-	font-size: 12px;
+	background: #f1f5f9;
+	color: #475569;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 6px 12px;
+	font-size: 13px;
+	font-weight: 500;
 }
 
-.card-footer {
-	margin-top: 4px;
-	padding-top: 12px;
-	border-top: 1px solid rgba(0, 0, 0, 0.06);
+.create-card {
+	background: rgba(255, 255, 255, 0.5);
+	border: 2px dashed rgba(15, 23, 42, 0.15);
+	box-shadow: none;
+	backdrop-filter: none;
+	-webkit-backdrop-filter: none;
 }
 
-.status-badge {
-	border-radius: 6px;
-	padding: 4px 10px;
-	font-size: 12px;
+.create-card:hover {
+	border-color: rgba(80, 100, 247, 0.6);
+	background: rgba(239, 246, 255, 0.6);
+	box-shadow: none;
 }
 
-.status-badge.published {
-	background: rgba(16, 185, 129, 0.12);
-	color: #10b981;
+.create-icon-wrap {
+	width: 64px;
+	height: 64px;
+	border-radius: 20px;
+	background: #ffffff;
+	box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-bottom: 16px;
+	transition: transform 0.3s var(--anim-ease-spring);
 }
 
-.full-height {
-	height: 100%;
+.create-card:hover .create-icon-wrap {
+	transform: scale(1.1);
+	background: #5064f7;
+	color: #ffffff !important;
+}
+.create-card:hover .create-icon-wrap .q-icon {
+	color: #ffffff !important;
 }
 
 /* В духе TrainingModal / PublishModal: спокойно, без ярких градиентов */
@@ -797,14 +889,24 @@ onUnmounted(() => {
 	flex-shrink: 0;
 }
 
-.training-card-menu-trigger {
-	opacity: 0.88;
-	transition: opacity 0.2s ease, background 0.2s ease;
-}
-
 .training-card-menu-trigger:hover {
 	opacity: 1;
 	background: rgba(0, 0, 0, 0.05) !important;
+}
+
+@media (max-width: 768px) {
+	.training-page {
+		padding: 24px 16px 20px;
+	}
+	.page-header {
+		margin-bottom: 24px;
+	}
+	.page-title {
+		font-size: 26px;
+	}
+	.page-subtitle {
+		font-size: 14px;
+	}
 }
 </style>
 

@@ -1,12 +1,12 @@
 <template>
   <q-layout view="lHh Lpr lFf" class="landing-layout">
     <!-- Header with Auth Links -->
-    <q-header class="bg-transparent" flat>
+    <q-header class="landing-header" flat>
       <q-toolbar class="container q-py-md">
         <div class="text-h5 text-weight-bolder text-primary" style="letter-spacing: -0.5px;">SkillSnap</div>
         <q-space />
         <q-btn flat color="dark" label="Войти" to="/login" class="text-weight-bold q-mr-sm" />
-        <q-btn outline color="primary" label="Регистрация" to="/register" rounded class="text-weight-bold bg-white" />
+        <q-btn unelevated color="primary" label="Регистрация" to="/registration" rounded class="text-weight-bold" />
       </q-toolbar>
     </q-header>
 
@@ -360,7 +360,7 @@ export default { name: 'LandingPage' };
 <style scoped>
 /* ==================== BASE ==================== */
 .landing-layout {
-  background-color: #f8fafc;
+  background-color: #ffffff;
   font-family: 'Inter', 'Segoe UI', sans-serif;
 }
 .landing-page {
@@ -372,6 +372,14 @@ export default { name: 'LandingPage' };
   padding: 0 40px;
 }
 .flex-grow-1 { flex-grow: 1; }
+
+/* ==================== HEADER ==================== */
+.landing-header {
+  background: rgba(255, 255, 255, 0.8) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
 
 /* ==================== BG BLOBS ==================== */
 .blob-bg {
@@ -431,7 +439,7 @@ export default { name: 'LandingPage' };
 .hero-section {
   position: relative;
   z-index: 1;
-  padding: 120px 0 100px;
+  padding: 140px 0 100px;
   text-align: center;
 }
 .hero-tag {
@@ -458,19 +466,19 @@ export default { name: 'LandingPage' };
   50% { opacity: 0.5; transform: scale(0.7); }
 }
 .hero-title {
-  font-size: clamp(2.8rem, 5vw, 4.2rem);
+  font-size: clamp(3rem, 5.5vw, 4.8rem);
   font-weight: 900;
-  line-height: 1.1;
-  letter-spacing: -1.5px;
+  line-height: 1.05;
+  letter-spacing: -2px;
   color: #0f172a;
   margin: 0 0 24px;
 }
 .hero-subtitle {
-  font-size: 1.2rem;
+  font-size: 1.25rem;
   color: #475569;
   max-width: 680px;
-  margin: 0 auto 36px;
-  line-height: 1.7;
+  margin: 0 auto 40px;
+  line-height: 1.6;
 }
 .hero-markers {
   display: flex;
@@ -483,7 +491,7 @@ export default { name: 'LandingPage' };
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
   color: #334155;
 }
@@ -498,10 +506,20 @@ export default { name: 'LandingPage' };
 }
 .hero-btn:hover { transform: translateY(-3px); }
 .hero-btn--primary {
-  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.35);
+  box-shadow: 0 12px 28px rgba(79, 70, 229, 0.35);
 }
 .hero-btn--primary:hover {
-  box-shadow: 0 12px 32px rgba(79, 70, 229, 0.5);
+  box-shadow: 0 16px 36px rgba(79, 70, 229, 0.5);
+}
+.hero-btn--outline {
+  background: white !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+.hero-btn--outline:hover {
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.08);
 }
 
 /* ==================== HOW IT WORKS ==================== */

@@ -45,14 +45,14 @@
 					</q-item-section>
 				</q-item>
 				<q-separator />
-				<q-item clickable v-close-popup @click="openProfile">
+				<q-item clickable v-ripple v-close-popup @click="openProfile">
 					<q-item-section avatar>
 						<q-icon name="person" size="sm" color="grey-7" />
 					</q-item-section>
 					<q-item-section>Профиль</q-item-section>
 				</q-item>
 				<q-separator />
-				<q-item clickable v-close-popup @click="logout">
+				<q-item clickable v-ripple v-close-popup @click="logout">
 					<q-item-section avatar>
 						<q-icon name="logout" size="sm" color="negative" />
 					</q-item-section>

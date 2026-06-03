@@ -20,15 +20,15 @@
 				</p>
 
 				<div class="features-list animate-stagger-children">
-					<div class="feature-item">
+					<div class="feature-item relative-position" v-ripple>
 						<q-icon name="content_copy" size="18px" />
 						<span>Копирование тренингов</span>
 					</div>
-					<div class="feature-item">
+					<div class="feature-item relative-position" v-ripple>
 						<q-icon name="filter_list" size="18px" />
 						<span>Фильтры и поиск</span>
 					</div>
-					<div class="feature-item">
+					<div class="feature-item relative-position" v-ripple>
 						<q-icon name="share" size="18px" />
 						<span>Совместная работа</span>
 					</div>
@@ -77,21 +77,25 @@
 .page-header {
 	margin-bottom: 32px;
 	flex-shrink: 0;
+	position: relative;
+	z-index: 2;
 }
 
 .page-title {
-	font-size: 28px;
-	font-weight: 600;
+	font-size: 32px;
+	font-weight: 800;
 	color: #0f172a;
-	margin: 0 0 6px 0;
+	margin: 0 0 8px 0;
 	letter-spacing: -0.02em;
+	line-height: 1.2;
 }
 
 .page-subtitle {
-	font-size: 15px;
+	font-size: 16px;
 	color: #64748b;
 	margin: 0;
-	font-weight: 400;
+	font-weight: 500;
+	line-height: 1.5;
 }
 
 /* ——— Coming Soon Container ——— */
@@ -104,18 +108,23 @@
 }
 
 .coming-soon-card {
-	background: white;
-	border: 1px solid #e2e8f0;
+	background: rgba(255, 255, 255, 0.85);
+	backdrop-filter: blur(20px);
+	-webkit-backdrop-filter: blur(20px);
+	border: 1px solid rgba(0, 0, 0, 0.06);
 	border-radius: 20px;
 	padding: 48px 40px;
 	text-align: center;
 	max-width: 560px;
 	width: 100%;
-	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
-	transition: box-shadow 0.3s ease, transform 0.3s var(--anim-ease-spring);
+	box-shadow: 0 8px 32px rgba(15, 23, 42, 0.04);
+	transition: box-shadow 0.3s ease, transform 0.3s var(--anim-ease-spring), background 0.3s ease;
+	position: relative;
+	z-index: 2;
 }
 .coming-soon-card:hover {
-	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+	background: rgba(255, 255, 255, 0.9);
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
 	transform: translateY(-2px);
 }
 
@@ -172,8 +181,8 @@
 	align-items: center;
 	gap: 8px;
 	padding: 10px 14px;
-	background: #f8fafc;
-	border: 1px solid #e2e8f0;
+	background: rgba(255, 255, 255, 0.6);
+	border: 1px solid rgba(0, 0, 0, 0.05);
 	border-radius: 12px;
 	font-size: 13px;
 	color: #475569;
