@@ -47,6 +47,45 @@
 					<q-spinner-bars v-if="loader === true" color="white" size="2em" />
 					<span v-else>Войти</span>
 				</q-btn>
+
+				<div class="row items-center no-wrap full-width q-my-lg auth-or-row">
+					<q-separator class="col" />
+					<span class="auth-or-label">или</span>
+					<q-separator class="col" />
+				</div>
+
+				<div class="column items-center yandex-oauth-block">
+					<div class="text-caption text-grey-7 q-mb-sm text-center auth-yandex-hint">
+						Войти с помощью
+					</div>
+
+					<!-- Если виджет заблокирован или не загрузился, показываем фоллбэк-кнопку -->
+					<q-btn
+						v-if="yandexWidgetError"
+						round
+						flat
+						dense
+						type="button"
+						class="yandex-id-round"
+						aria-label="Войти с Яндексом"
+						@click.prevent="startYandexFallback()"
+					>
+						<img
+							class="yandex-id-round__mark"
+							src="/icons/yandex.svg"
+							width="32"
+							height="32"
+							alt=""
+						/>
+					</q-btn>
+
+					<!-- Контейнер для официального виджета -->
+					<div v-show="!yandexWidgetError" id="yandex-auth-container" class="yandex-widget-container"></div>
+					
+					<div class="text-caption text-grey-6 q-mt-xs text-center">
+						Яндекс ID
+					</div>
+				</div>
 			</div>
 		</template>
 	</BaseCard>
@@ -55,6 +94,7 @@
 <script>
 import axios from "axios";
 import { BaseCard } from "@components/base_components";
+import { authApi } from "@api";
 import { useUserStore } from "@store/userData.js";
 export default {
 	name: "LoginForm",
@@ -66,9 +106,96 @@ export default {
 
 			loader: false,
 			isPwd: true,
+			yandexWidgetError: false,
 		};
 	},
+	async mounted() {
+		try {
+			const { data } = await authApi.getYandexConfig();
+			if (data.client_id) {
+				this.initYandexWidget(data.client_id, data.redirect_uri);
+			}
+		} catch (e) {
+			console.error("Failed to load Yandex config", e);
+		}
+	},
 	methods: {
+		startYandexFallback() {
+			const next =
+				(typeof this.$route.query.redirect === "string" && this.$route.query.redirect) ||
+				"/personal";
+			const url = `${__BASE__URL__}/auth/yandex/start?next=${encodeURIComponent(next)}`;
+			window.location.href = url;
+		},
+		initYandexWidget(clientId, redirectUri) {
+			const init = () => {
+				if (!window.YaAuthSuggest) {
+					this.yandexWidgetError = true;
+					return;
+				}
+				window.YaAuthSuggest.init(
+					{
+						client_id: clientId,
+						response_type: "token",
+						redirect_uri: redirectUri,
+					},
+					window.location.origin,
+					{
+						view: "button",
+						parentId: "yandex-auth-container",
+						buttonView: "icon",
+						buttonTheme: "light",
+						buttonSize: "m",
+						buttonBorderRadius: 22,
+					}
+				)
+					.then(({ handler }) => handler())
+					.then(async (data) => {
+						if (data.access_token) {
+							this.loader = true;
+							try {
+								const res = await authApi.sendYandexToken(data.access_token);
+								localStorage.setItem("tokenAuth", res.data.access_token);
+								await useUserStore().fetchUser();
+								const redirect = this.$route.query.redirect || "/personal";
+								this.$router.push(redirect);
+							} catch (err) {
+								this.$q.notify({
+									type: "negative",
+									message: "Ошибка авторизации через Яндекс",
+									position: "top",
+								});
+							} finally {
+								this.loader = false;
+							}
+						}
+					})
+					.catch((error) => {
+						console.log("Yandex widget closed or error", error);
+						if (error && error.code === "not_available") {
+							this.yandexWidgetError = true;
+						} else {
+							this.$q.notify({
+								type: "warning",
+								message: "Окно входа закрыто или неверно настроен Redirect URI в консоли Яндекса",
+								position: "top",
+							});
+						}
+					});
+			};
+
+			if (window.YaAuthSuggest) {
+				init();
+			} else {
+				const script = document.createElement("script");
+				script.src = "https://yastatic.net/s3/passport-sdk/autofill/v1/sdk-suggest-with-polyfills-latest.js";
+				script.onload = init;
+				script.onerror = () => {
+					this.yandexWidgetError = true;
+				};
+				document.head.appendChild(script);
+			}
+		},
 		async login() {
 			this.loader = true;
 			let form = new FormData();
@@ -172,5 +299,67 @@ export default {
 }
 .auth-btn:active {
 	transform: translateY(0);
+}
+
+.auth-or-row {
+	gap: 12px;
+}
+
+.auth-or-label {
+	flex-shrink: 0;
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: #94a3b8;
+}
+
+.yandex-oauth-block {
+	max-width: 100%;
+}
+
+.auth-yandex-hint {
+	line-height: 1.35;
+	max-width: 280px;
+}
+
+.yandex-widget-container {
+	width: 44px;
+	height: 44px;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+}
+
+.yandex-id-round {
+	width: 44px !important;
+	height: 44px !important;
+	min-width: 44px !important;
+	min-height: 44px !important;
+	padding: 0 !important;
+	border-radius: 50% !important;
+	background: #f8fafc !important;
+	border: 1px solid #e2e8f0 !important;
+	box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+	transition: transform 0.25s var(--anim-ease-spring), box-shadow 0.25s ease,
+		border-color 0.2s ease;
+}
+
+.yandex-id-round:hover {
+	transform: translateY(-2px);
+	border-color: rgba(80, 100, 247, 0.35);
+	box-shadow: 0 4px 14px rgba(80, 100, 247, 0.12);
+}
+
+.yandex-id-round:active {
+	transform: translateY(0);
+}
+
+.yandex-id-round__mark {
+	display: block;
+	width: 32px;
+	height: 32px;
+	object-fit: contain;
+	pointer-events: none;
 }
 </style>

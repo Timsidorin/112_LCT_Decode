@@ -95,7 +95,7 @@ export class TrainingApi extends BaseApi {
 
 	async streamRewriteTaskText(text, onChunk) {
 		const token = localStorage.getItem("tokenAuth");
-		const response = await fetch(`${this.baseUrl}/training/ai/rewrite-task`, {
+		const response = await fetch(`${__BASE__URL__}/training/ai/rewrite-task`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",

@@ -2,7 +2,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from core.config import configs
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import UUID4
 
 from depends import (
@@ -260,6 +260,68 @@ async def update_training_step(
 ):
     """Обновление шага по UUID тренинга и ID шага"""
     return await service.update_step(training_uuid, step_id, step_data)
+
+
+@router.get(
+    "/{training_uuid}/steps/{step_id}/screenshot-source",
+    name="Скриншот шага для редактора (без CORS S3)",
+)
+async def get_step_screenshot_source(
+    training_uuid: UUID4,
+    step_id: int,
+    token: str = Depends(oauth2_scheme),
+    service: TrainingsService = Depends(get_trainings_service),
+    user_service: UserService = Depends(get_user_service),
+    s3_service: S3Service = Depends(get_s3_service),
+):
+    user = await user_service.get_current_user(token)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Не авторизован",
+        )
+    content, media_type = await service.get_step_screenshot_bytes(
+        training_uuid, step_id, user.id, s3_service
+    )
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=60"},
+    )
+
+
+@router.post(
+    "/{training_uuid}/steps/{step_id}/screenshot",
+    response_model=TrainingStepResponse,
+    name="Заменить скриншот шага",
+)
+async def replace_step_screenshot(
+    training_uuid: UUID4,
+    step_id: int,
+    file: UploadFile = File(...),
+    token: str = Depends(oauth2_scheme),
+    service: TrainingsService = Depends(get_trainings_service),
+    user_service: UserService = Depends(get_user_service),
+    s3_service: S3Service = Depends(get_s3_service),
+):
+    user = await user_service.get_current_user(token)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Не авторизован",
+        )
+    content = await file.read()
+    try:
+        return await service.replace_step_screenshot(
+            training_uuid,
+            step_id,
+            user.id,
+            content,
+            file.filename or "screenshot.png",
+            s3_service,
+        )
+    finally:
+        await file.close()
 
 
 @router.delete("/{training_uuid}/steps/{step_id}", summary="Удалить шаг тренинга")

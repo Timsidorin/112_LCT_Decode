@@ -1,7 +1,7 @@
 import os
 from typing import Optional
 
-from pydantic import Field
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -106,6 +106,32 @@ class Configs(BaseSettings):
     # ------------------- AI Voice (SaluteSpeech) ---------------------------
     CLIENT_ID_SALUTESPEECH: str = Field(default="", env="CLIENT_ID_SALUTESPEECH")
     SALUT_SPEECH_AUTORIZATION: str = Field(default="", env="SALUT_SPEECH_AUTORIZATION")
+
+    # ------------------- OAuth: Яндекс ID -----------------------------------------
+    # В консоли OAuth укажите Redirect URI = этот же URL (бэкенд), например:
+    # http://localhost:8002/auth/yandex/callback
+    # CLIENT_ID / CLIENT_SECRET из .env подхватываются как алиасы (не через os.environ).
+    YANDEX_CLIENT_ID: str = Field(
+        default="",
+        validation_alias=AliasChoices("YANDEX_CLIENT_ID", "CLIENT_ID"),
+    )
+    YANDEX_CLIENT_SECRET: str = Field(
+        default="",
+        validation_alias=AliasChoices("YANDEX_CLIENT_SECRET", "CLIENT_SECRET"),
+    )
+    YANDEX_REDIRECT_URI: str = Field(
+        default="http://localhost:8002/auth/yandex/callback",
+        env="YANDEX_REDIRECT_URI",
+    )
+    FRONTEND_PUBLIC_URL: str = Field(
+        default="http://localhost:5173", env="FRONTEND_PUBLIC_URL"
+    )
+
+    @model_validator(mode="after")
+    def _yandex_redirect_non_empty(self) -> "Configs":
+        if not (self.YANDEX_REDIRECT_URI or "").strip():
+            self.YANDEX_REDIRECT_URI = "http://localhost:8002/auth/yandex/callback"
+        return self
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"),

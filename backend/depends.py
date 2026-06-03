@@ -16,7 +16,6 @@ from repositories.trainings_repository import TrainingRepository
 from repositories.users_repository import UserRepository
 from services.courses_service import CoursesService
 from services.external_services.gigachat_tts_service import GigaChatTTSService
-from services.external_services.mail_service import EmailService
 from services.external_services.s3_service import S3Service
 from services.pdf_ai_service import PdfAiService
 from services.trainings_service import TrainingsService

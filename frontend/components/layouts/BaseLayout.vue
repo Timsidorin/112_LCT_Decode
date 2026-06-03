@@ -231,10 +231,20 @@ export default {
 }
 
 .drawer {
-	background: white;
+	background: rgba(255, 255, 255, 0.4) !important;
+	backdrop-filter: blur(20px);
+	-webkit-backdrop-filter: blur(20px);
+	border-right: 1px solid rgba(255, 255, 255, 0.5) !important;
 }
-.drawer :deep(.q-drawer__content) {
-	transition: opacity 0.2s ease;
+
+:deep(.q-drawer) {
+	background: rgba(255, 255, 255, 0.4) !important;
+	backdrop-filter: blur(20px);
+	-webkit-backdrop-filter: blur(20px);
+}
+
+:deep(.q-drawer__content) {
+	background: transparent !important;
 }
 
 .drawer-nav-header {
@@ -242,7 +252,7 @@ export default {
 	font-weight: 600;
 	letter-spacing: 0.06em;
 	text-transform: uppercase;
-	color: #94a3b8;
+	color: #64748b;
 	padding: 16px 16px 8px;
 	line-height: 1.2;
 }
@@ -255,23 +265,28 @@ export default {
 .drawer-nav-item {
 	margin: 4px 10px;
 	border-radius: 12px;
-	transition: background 0.2s ease, transform 0.2s ease;
+	transition: all 0.3s ease;
 	animation: fadeInUp 0.35s var(--anim-ease-out) backwards;
 	animation-delay: calc(0.04s * (var(--stagger, 0) + 1));
+	background: transparent;
+	border: 1px solid transparent;
 }
 
 .drawer-nav-item:hover {
-	background: rgba(80, 100, 247, 0.06);
+	background: rgba(255, 255, 255, 0.6);
+	border-color: rgba(255, 255, 255, 0.8);
+	box-shadow: 0 4px 12px rgba(31, 38, 135, 0.05);
 }
 
 .drawer-nav-item:active {
-	transform: scale(0.99);
+	transform: scale(0.98);
 }
 
 .drawer-nav-item--active {
-	background: rgba(80, 100, 247, 0.12) !important;
+	background: rgba(255, 255, 255, 0.85) !important;
 	color: #5064f7;
-	box-shadow: 0 0 0 1px rgba(80, 100, 247, 0.15);
+	border-color: rgba(255, 255, 255, 1);
+	box-shadow: 0 8px 20px rgba(80, 100, 247, 0.12);
 }
 
 .drawer-nav-item--active :deep(.drawer-nav-icon) {

@@ -13,6 +13,22 @@
 
 		<base-loader size="100px" v-model="loadingStatus" />
 
+		<q-btn
+			v-show="cropButtonVisible"
+			flat
+			no-caps
+			rounded
+			color="primary"
+			icon="crop"
+			label="Скриншот"
+			class="edit-crop-fab glass-panel"
+			@click="cropDialogOpen = true"
+		>
+			<q-tooltip anchor="center left" self="center right" :offset="[8, 0]">
+				Обрезать или расширить кадр (PDF и др.)
+			</q-tooltip>
+		</q-btn>
+
 		<template v-if="!loadingStatus">
 			<!-- Пустое состояние: нет шагов -->
 			<div v-if="!storeSteps || storeSteps.length === 0" class="empty-state">
@@ -65,6 +81,13 @@
 				</div>
 			</template>
 		</template>
+
+		<screenshot-crop-dialog
+			v-model="cropDialogOpen"
+			:training-uuid="trainingUuidParam"
+			:step-id="selectedStep?.id ?? null"
+			@saved="onScreenshotSaved"
+		/>
 	</div>
 </template>
 
@@ -74,7 +97,7 @@ import { UploadPhoto } from "@components/features/edit_page/uploader_photo";
 import { GroupSteps } from "@components/features/edit_page/drop_down_list_steps";
 import { TrainingApi } from "@api";
 import { useRoute, useRouter } from "vue-router";
-import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { nextTick, onMounted, onUnmounted, ref, watch, computed } from "vue";
 import { storeToRefs } from "pinia";
 import { useTrainingData } from "@store/editTraining.js";
 import StepTitle from "@components/features/edit_page/StepTitle.vue";
@@ -82,6 +105,7 @@ import StepTaskEditor from "@components/features/edit_page/StepTaskEditor.vue";
 import AIGeneratedBanner from "@components/features/edit_page/AIGeneratedBanner.vue";
 import { BaseLoader } from "@components/base_components/index.js";
 import ToolBar from "@components/features/edit_page/tool_bar/ui/ToolBar.vue";
+import ScreenshotCropDialog from "@components/features/edit_page/ScreenshotCropDialog.vue";
 import { useQuasar } from "quasar";
 
 const trainingApi = new TrainingApi();
@@ -92,6 +116,26 @@ const $q = useQuasar();
 const { steps: storeSteps, selectedStep } = storeToRefs(store);
 
 const loadingStatus = ref(true);
+
+const trainingUuidParam = computed(() => {
+	const u = route.params?.uuid;
+	return u != null && u !== "" ? String(u) : "";
+});
+
+const cropButtonVisible = computed(
+	() =>
+		!loadingStatus.value &&
+		Array.isArray(storeSteps.value) &&
+		storeSteps.value.length > 0 &&
+		!!selectedStep.value?.image_url
+);
+
+const cropDialogOpen = ref(false);
+
+function onScreenshotSaved() {
+	void nextTick();
+}
+
 const hintHidden = ref(false);
 let hintAutoHideTimer = null;
 
@@ -220,6 +264,15 @@ onMounted(() => {
 
 .edit-overlays > * {
 	pointer-events: auto;
+}
+
+.edit-crop-fab {
+	position: fixed;
+	top: 64px;
+	right: 12px;
+	z-index: 199;
+	background: rgba(255, 255, 255, 0.95) !important;
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
 .edit-area {

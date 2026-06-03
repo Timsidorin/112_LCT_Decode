@@ -31,5 +31,16 @@ import LoginForm from '@components/features/login_page/LoginForm.vue';
 export default {
   name: "LoginPage",
   components: { LoginForm },
+  mounted() {
+    if (this.$route.query.yandex_error) {
+      this.$q.notify({
+        type: "negative",
+        message: "Не удалось войти через Яндекс. Проверьте Redirect URI и ключи в .env.",
+        position: "top",
+        timeout: 5000,
+      });
+      this.$router.replace({ path: "/login", query: {} });
+    }
+  },
 }
 </script>

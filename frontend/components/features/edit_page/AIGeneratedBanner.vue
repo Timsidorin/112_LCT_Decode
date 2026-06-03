@@ -6,7 +6,8 @@
 				<div class="ai-banner-text">
 					<div class="ai-banner-title">Шаг создан с помощью AI</div>
 					<div class="ai-banner-desc">
-						Возможны неточности распознавания. Вы можете отредактировать описание и уточнить область действия.
+						Возможны неточности распознавания. Уточните область действия; для PDF при необходимости
+						нажмите «Скриншот» сверху справа и обрежьте или расширьте кадр.
 					</div>
 				</div>
 			</div>
@@ -40,7 +41,8 @@ const dismissedSteps = ref(new Set());
 const isAIGenerated = computed(() => {
 	if (!selectedStep.value?.id) return false;
 	if (dismissedSteps.value.has(selectedStep.value.id)) return false;
-	return selectedStep.value?.meta?.source === "video_ai";
+	const src = selectedStep.value?.meta?.source;
+	return src === "video_ai" || src === "pdf_ai";
 });
 
 // Сбрасываем показ баннера при смене шага

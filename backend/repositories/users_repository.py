@@ -15,11 +15,16 @@ class UserRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def find_one_or_none(self, email: str) -> User:
+    async def find_one_or_none(self, email: str) -> Optional[User]:
         """Поиск пользователя по email"""
         query = select(User).where(User.email == email)
         result = await self.session.execute(query)
 
+        return result.scalar_one_or_none()
+
+    async def find_by_yandex_id(self, yandex_id: str) -> Optional[User]:
+        query = select(User).where(User.yandex_id == yandex_id)
+        result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
     async def add_user(self, user: UserRegister) -> bool:

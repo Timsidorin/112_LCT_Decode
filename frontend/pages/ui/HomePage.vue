@@ -1,14 +1,37 @@
 <template>
 	<div class="home-page">
 		<div class="home-inner">
-			<header class="home-hero animate-fade-in-up">
-				<h1 class="home-hero__title">
-					Добро пожаловать, {{ userStore.first_name || "Пользователь" }}
-				</h1>
-				<p class="home-hero__subtitle">
-					Управляйте тренингами и следите за прогрессом
-				</p>
-			</header>
+			<div class="home-hero-wrapper animate-fade-in-down">
+				<header class="home-hero">
+					<div class="home-hero__row">
+						<q-avatar
+							v-if="userStore.isYandexUser"
+							size="80px"
+							class="home-hero__avatar"
+						>
+							<img
+								v-if="userStore.photo"
+								:src="userStore.photo"
+								alt=""
+							/>
+							<img
+								v-else
+								src="/icons/yandex.svg"
+								alt=""
+								class="home-hero__yandex-fallback"
+							/>
+						</q-avatar>
+						<div class="home-hero__text">
+							<h1 class="home-hero__title">
+								Добро пожаловать, {{ userStore.fullName }}
+							</h1>
+							<p class="home-hero__subtitle">
+								Управляйте тренингами и следите за прогрессом
+							</p>
+						</div>
+					</div>
+				</header>
+			</div>
 
 			<div v-if="loading" class="home-loading">
 				<q-spinner-dots size="48px" color="primary" class="home-loading__spinner" />
@@ -20,14 +43,14 @@
 				<section class="home-panel" aria-labelledby="home-summary-heading">
 					<div class="home-panel__head">
 						<h2 id="home-summary-heading" class="home-panel__title">
-							<q-icon name="insights" size="18px" class="home-panel__title-icon" />
+							<q-icon name="insights" size="20px" class="home-panel__title-icon" />
 							Сводка
 						</h2>
 					</div>
 					<div class="stats-grid">
 						<div class="stat-card">
 							<div class="stat-icon">
-								<q-icon name="school" size="20px" />
+								<q-icon name="school" size="24px" />
 							</div>
 							<div class="stat-content">
 								<div class="stat-value">{{ stats.totalTrainings }}</div>
@@ -36,7 +59,7 @@
 						</div>
 						<div class="stat-card stat-card--success">
 							<div class="stat-icon">
-								<q-icon name="check_circle" size="20px" />
+								<q-icon name="check_circle" size="24px" />
 							</div>
 							<div class="stat-content">
 								<div class="stat-value">{{ stats.publishedTrainings }}</div>
@@ -45,7 +68,7 @@
 						</div>
 						<div class="stat-card stat-card--draft">
 							<div class="stat-icon">
-								<q-icon name="edit_note" size="20px" />
+								<q-icon name="edit_note" size="24px" />
 							</div>
 							<div class="stat-content">
 								<div class="stat-value">{{ stats.draftTrainings }}</div>
@@ -59,7 +82,7 @@
 				<section class="home-panel" aria-labelledby="home-actions-heading">
 					<div class="home-panel__head">
 						<h2 id="home-actions-heading" class="home-panel__title">
-							<q-icon name="bolt" size="18px" class="home-panel__title-icon" />
+							<q-icon name="bolt" size="20px" class="home-panel__title-icon" />
 							Быстрые действия
 						</h2>
 					</div>
@@ -72,7 +95,7 @@
 							@keydown.enter="$router.push('/personal/training')"
 						>
 							<div class="action-icon">
-								<q-icon name="add_circle_outline" size="24px" />
+								<q-icon name="add_circle_outline" />
 							</div>
 							<div class="action-content">
 								<div class="action-title">Создать тренинг</div>
@@ -88,7 +111,7 @@
 							@keydown.enter="$router.push('/personal/library')"
 						>
 							<div class="action-icon">
-								<q-icon name="library_books" size="24px" />
+								<q-icon name="library_books" />
 							</div>
 							<div class="action-content">
 								<div class="action-title">Библиотека</div>
@@ -104,7 +127,7 @@
 							@keydown.enter="$router.push('/personal/courses')"
 						>
 							<div class="action-icon">
-								<q-icon name="school" size="24px" />
+								<q-icon name="school" />
 							</div>
 							<div class="action-content">
 								<div class="action-title">Мои курсы</div>
@@ -123,7 +146,7 @@
 				>
 					<div class="home-panel__head">
 						<h2 id="home-recent-heading" class="home-panel__title">
-							<q-icon name="history" size="18px" class="home-panel__title-icon" />
+							<q-icon name="history" size="20px" class="home-panel__title-icon" />
 							Недавние тренинги
 						</h2>
 						<q-btn
@@ -154,7 +177,7 @@
 							</div>
 							<div class="training-meta">
 								<div class="training-meta-item">
-									<q-icon name="layers" size="14px" />
+									<q-icon name="layers" size="16px" />
 									<span>{{ training.steps?.length || 0 }} шагов</span>
 								</div>
 							</div>
@@ -176,7 +199,6 @@
 						<q-btn
 							unelevated
 							no-caps
-							rounded
 							color="primary"
 							icon="add"
 							label="Создать тренинг"
@@ -229,27 +251,70 @@ onMounted(async () => {
 
 <style scoped>
 .home-page {
-	padding: 24px 24px 40px;
+	padding: 0;
 	min-height: 100%;
 	box-sizing: border-box;
+	background: transparent;
 }
 
-/* Вровень с шапкой и списком тренингов: колонка слева, без «острова» по центру экрана */
 .home-inner {
-	max-width: 960px;
-	margin-left: 0;
-	margin-right: auto;
 	width: 100%;
+	max-width: 1400px;
+	margin: 0 auto;
+	padding: 32px 32px 48px;
 }
 
 /* ——— Hero ——— */
+.home-hero-wrapper {
+	background: rgba(255, 255, 255, 0.55);
+	backdrop-filter: blur(24px);
+	-webkit-backdrop-filter: blur(24px);
+	border: 1px solid rgba(255, 255, 255, 0.8);
+	border-radius: 24px;
+	padding: 40px 32px;
+	margin-bottom: 32px;
+	box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05);
+	color: #1a1a2e;
+}
+
 .home-hero {
-	margin-bottom: 24px;
+	width: 100%;
+}
+
+.home-hero__row {
+	display: flex;
+	align-items: center;
+	gap: 24px;
+	flex-wrap: wrap;
+}
+
+.home-hero__avatar {
+	flex-shrink: 0;
+	border: 4px solid rgba(255, 255, 255, 0.8);
+	box-shadow: 0 8px 24px rgba(80, 100, 247, 0.15);
+	background: white;
+}
+
+.home-hero__avatar img {
+	object-fit: cover;
+	width: 100%;
+	height: 100%;
+}
+
+.home-hero__yandex-fallback {
+	padding: 12px;
+	object-fit: contain !important;
+	background: #fff;
+}
+
+.home-hero__text {
+	min-width: 0;
+	flex: 1;
 }
 
 .home-hero__title {
-	font-size: 26px;
-	font-weight: 700;
+	font-size: 32px;
+	font-weight: 800;
 	color: #1a1a2e;
 	margin: 0 0 8px 0;
 	letter-spacing: -0.02em;
@@ -257,12 +322,12 @@ onMounted(async () => {
 }
 
 .home-hero__subtitle {
-	font-size: 15px;
+	font-size: 16px;
 	color: #64748b;
 	margin: 0;
-	font-weight: 400;
-	line-height: 1.45;
-	max-width: 36em;
+	font-weight: 500;
+	line-height: 1.5;
+	max-width: 40em;
 }
 
 /* ——— Loading ——— */
@@ -271,8 +336,8 @@ onMounted(async () => {
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	padding: 56px 0;
-	gap: 16px;
+	padding: 80px 0;
+	gap: 20px;
 }
 
 .home-loading__spinner {
@@ -280,7 +345,7 @@ onMounted(async () => {
 }
 
 .home-loading__text {
-	font-size: 14px;
+	font-size: 16px;
 	color: #64748b;
 	margin: 0;
 	font-weight: 500;
@@ -290,15 +355,20 @@ onMounted(async () => {
 .home-stack {
 	display: flex;
 	flex-direction: column;
-	gap: 20px;
+	gap: 32px;
 }
 
 .home-panel {
-	background: #fafbfc;
-	border: 1px solid rgba(26, 26, 46, 0.08);
-	border-radius: 14px;
-	padding: 20px 22px 22px;
-	box-shadow: none;
+	background: #ffffff;
+	border: 1px solid rgba(226, 232, 240, 0.8);
+	border-radius: 20px;
+	padding: 28px 32px;
+	box-shadow: 0 4px 20px rgba(15, 23, 42, 0.03);
+	transition: box-shadow 0.3s ease;
+}
+
+.home-panel:hover {
+	box-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
 }
 
 .home-panel--grow {
@@ -310,61 +380,85 @@ onMounted(async () => {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 12px;
-	margin-bottom: 18px;
+	gap: 16px;
+	margin-bottom: 24px;
 	flex-wrap: wrap;
 }
 
 .home-panel__title {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 10px;
 	margin: 0;
-	font-size: 13px;
-	font-weight: 600;
-	color: #374151;
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
+	font-size: 16px;
+	font-weight: 700;
+	color: #1e293b;
+	letter-spacing: 0.02em;
 }
 
 .home-panel__title-icon {
 	color: #5064f7;
-	opacity: 0.9;
+	background: rgba(80, 100, 247, 0.1);
+	padding: 6px;
+	border-radius: 8px;
 }
 
 .home-panel__link {
-	font-size: 13px;
+	font-size: 14px;
 	font-weight: 600;
 	margin: -4px -8px -4px 0;
+	border-radius: 8px;
 }
 
 /* ——— Stats ——— */
 .stats-grid {
 	display: grid;
 	grid-template-columns: repeat(3, 1fr);
-	gap: 14px;
+	gap: 20px;
 }
 
 .stat-card {
-	background: #f5f6fa;
-	border: 1px solid rgba(26, 26, 46, 0.06);
-	border-radius: 12px;
-	padding: 16px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 16px;
+	padding: 20px;
 	display: flex;
-	align-items: flex-start;
-	gap: 12px;
-	transition: border-color 0.2s ease, background 0.2s ease;
+	align-items: center;
+	gap: 16px;
+	transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+	position: relative;
+	overflow: hidden;
+}
+
+.stat-card::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 4px;
+	height: 100%;
+	background: #5064f7;
+	opacity: 0;
+	transition: opacity 0.25s ease;
 }
 
 .stat-card:hover {
-	border-color: rgba(26, 26, 46, 0.1);
-	background: #f0f2f6;
+	border-color: #cbd5e1;
+	transform: translateY(-2px);
+	box-shadow: 0 10px 25px rgba(15, 23, 42, 0.05);
 }
 
+.stat-card:hover::before {
+	opacity: 1;
+}
+
+.stat-card--success::before { background: #10b981; }
+.stat-card--draft::before { background: #64748b; }
+
 .stat-icon {
-	width: 40px;
-	height: 40px;
-	border-radius: 10px;
+	width: 48px;
+	height: 48px;
+	border-radius: 12px;
 	background: rgba(80, 100, 247, 0.1);
 	display: flex;
 	align-items: center;
@@ -389,70 +483,79 @@ onMounted(async () => {
 }
 
 .stat-value {
-	font-size: 22px;
-	font-weight: 700;
-	color: #1a1a2e;
-	line-height: 1.2;
-	margin-bottom: 2px;
+	font-size: 28px;
+	font-weight: 800;
+	color: #0f172a;
+	line-height: 1.1;
+	margin-bottom: 4px;
 }
 
 .stat-label {
-	font-size: 12px;
+	font-size: 13px;
 	color: #64748b;
-	font-weight: 500;
-	line-height: 1.3;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
 }
 
 /* ——— Quick actions ——— */
 .quick-actions {
 	display: grid;
 	grid-template-columns: repeat(3, 1fr);
-	gap: 12px;
+	gap: 20px;
 }
 
 .action-item {
-	background: #f5f6fa;
-	border: 1px solid rgba(26, 26, 46, 0.06);
-	border-radius: 12px;
-	padding: 16px 18px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 16px;
+	padding: 20px;
 	display: flex;
 	align-items: center;
-	gap: 14px;
+	gap: 16px;
 	cursor: pointer;
-	transition: border-color 0.2s ease, background 0.2s ease;
+	transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 	outline: none;
 }
 
 .action-item:hover,
 .action-item:focus-visible {
-	border-color: rgba(80, 100, 247, 0.3);
-	background: rgba(80, 100, 247, 0.06);
+	border-color: #5064f7;
+	background: #f8fafc;
+	transform: translateY(-2px);
+	box-shadow: 0 10px 25px rgba(80, 100, 247, 0.1);
 }
 
 .action-item:focus-visible {
-	box-shadow: 0 0 0 2px rgba(80, 100, 247, 0.22);
+	box-shadow: 0 0 0 3px rgba(80, 100, 247, 0.3);
 }
 
 .action-item:hover .action-arrow,
 .action-item:focus-visible .action-arrow {
-	transform: translateX(3px);
+	transform: translateX(4px);
 	color: #5064f7;
 }
 
 .action-icon {
-	width: 44px;
-	height: 44px;
-	border-radius: 12px;
-	background: rgba(80, 100, 247, 0.1);
+	width: 52px;
+	height: 52px;
+	border-radius: 14px;
+	background: rgba(80, 100, 247, 0.08);
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	color: #5064f7;
 	flex-shrink: 0;
+	transition: background 0.25s ease, color 0.25s ease;
+}
+
+.action-item:hover .action-icon {
+	background: #5064f7;
+	color: white;
 }
 
 .action-icon .q-icon {
-	font-size: 22px;
+	font-size: 24px;
 }
 
 .action-content {
@@ -461,60 +564,64 @@ onMounted(async () => {
 }
 
 .action-title {
-	font-size: 14px;
-	font-weight: 600;
-	color: #1a1a2e;
+	font-size: 15px;
+	font-weight: 700;
+	color: #0f172a;
 	margin-bottom: 4px;
 }
 
 .action-desc {
-	font-size: 12px;
+	font-size: 13px;
 	color: #64748b;
 	line-height: 1.4;
 }
 
 .action-arrow {
 	color: #cbd5e1;
-	transition: transform 0.2s ease, color 0.2s ease;
+	transition: transform 0.25s ease, color 0.25s ease;
 	flex-shrink: 0;
 }
 
 /* ——— Recent trainings ——— */
 .trainings-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-	gap: 12px;
+	grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+	gap: 20px;
 }
 
 .training-card {
-	background: #f5f6fa;
-	border: 1px solid rgba(26, 26, 46, 0.06);
-	border-radius: 12px;
-	padding: 14px 16px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 16px;
+	padding: 20px;
 	cursor: pointer;
-	transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+	transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+	display: flex;
+	flex-direction: column;
+	height: 100%;
 }
 
 .training-card:hover {
-	border-color: rgba(80, 100, 247, 0.28);
-	background: #eef0f4;
-	transform: translateY(-1px);
+	border-color: #5064f7;
+	box-shadow: 0 12px 30px rgba(80, 100, 247, 0.08);
+	transform: translateY(-3px);
 }
 
 .training-header {
 	display: flex;
 	align-items: flex-start;
 	justify-content: space-between;
-	gap: 10px;
-	margin-bottom: 10px;
+	gap: 12px;
+	margin-bottom: 16px;
+	flex: 1;
 }
 
 .training-title {
 	flex: 1;
-	font-size: 14px;
-	font-weight: 600;
-	color: #1a1a2e;
-	line-height: 1.35;
+	font-size: 15px;
+	font-weight: 700;
+	color: #0f172a;
+	line-height: 1.4;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	display: -webkit-box;
@@ -524,27 +631,32 @@ onMounted(async () => {
 
 .training-status {
 	font-size: 11px;
-	font-weight: 600;
-	padding: 4px 8px;
-	border-radius: 6px;
+	font-weight: 700;
+	padding: 4px 10px;
+	border-radius: 20px;
 	white-space: nowrap;
 	flex-shrink: 0;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
 }
 
 .training-status--published {
-	background: rgba(16, 185, 129, 0.12);
+	background: rgba(16, 185, 129, 0.1);
 	color: #059669;
 }
 
 .training-status--draft {
-	background: rgba(148, 163, 184, 0.15);
-	color: #64748b;
+	background: rgba(100, 116, 139, 0.1);
+	color: #475569;
 }
 
 .training-meta {
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: 16px;
+	padding-top: 16px;
+	border-top: 1px solid #f1f5f9;
+	margin-top: auto;
 }
 
 .training-meta-item {
@@ -552,16 +664,19 @@ onMounted(async () => {
 	align-items: center;
 	gap: 6px;
 	font-size: 13px;
+	font-weight: 500;
 	color: #64748b;
 }
 
 /* ——— Empty ——— */
 .home-panel--empty {
-	padding: 40px 28px;
+	padding: 60px 32px;
+	background: #f8fafc;
+	border: 2px dashed #e2e8f0;
 }
 
 .empty-inner {
-	max-width: 400px;
+	max-width: 420px;
 	margin: 0 auto;
 	text-align: center;
 	display: flex;
@@ -570,59 +685,90 @@ onMounted(async () => {
 }
 
 .empty-icon {
-	width: 80px;
-	height: 80px;
-	border-radius: 20px;
+	width: 88px;
+	height: 88px;
+	border-radius: 24px;
 	background: rgba(80, 100, 247, 0.1);
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	color: #5064f7;
-	opacity: 0.85;
-	margin-bottom: 20px;
+	margin-bottom: 24px;
+	box-shadow: 0 8px 24px rgba(80, 100, 247, 0.15);
 }
 
 .empty-title {
-	font-size: 17px;
-	font-weight: 600;
-	color: #1a1a2e;
-	margin: 0 0 8px 0;
+	font-size: 20px;
+	font-weight: 700;
+	color: #0f172a;
+	margin: 0 0 12px 0;
 }
 
 .empty-desc {
-	font-size: 14px;
+	font-size: 15px;
 	color: #64748b;
-	margin: 0 0 22px 0;
-	line-height: 1.45;
+	margin: 0 0 28px 0;
+	line-height: 1.5;
 }
 
 .empty-btn {
 	border-radius: 12px;
-	padding: 10px 22px;
+	padding: 12px 28px;
 	font-weight: 600;
+	font-size: 15px;
+	box-shadow: 0 4px 12px rgba(80, 100, 247, 0.25);
 }
 
 /* ——— Responsive ——— */
+@media (max-width: 1024px) {
+	.stats-grid, .quick-actions {
+		grid-template-columns: repeat(2, 1fr);
+	}
+}
+
+@media (max-width: 768px) {
+	.home-inner {
+		padding: 24px 24px 32px;
+	}
+	
+	.home-hero-wrapper {
+		padding: 32px 24px;
+	}
+	
+	.home-hero__title {
+		font-size: 26px;
+	}
+}
+
 @media (max-width: 640px) {
-	.home-page {
-		padding: 20px 16px 32px;
+	.home-inner {
+		padding: 16px 16px 24px;
+	}
+
+	.home-hero-wrapper {
+		padding: 24px 16px;
+	}
+	
+	.home-hero__row {
+		flex-direction: column;
+		text-align: center;
+		gap: 16px;
 	}
 
 	.home-hero__title {
 		font-size: 22px;
 	}
 
-	.stats-grid {
-		grid-template-columns: 1fr;
-	}
-
-	.quick-actions {
+	.stats-grid, .quick-actions {
 		grid-template-columns: 1fr;
 	}
 
 	.trainings-grid {
 		grid-template-columns: 1fr;
 	}
+	
+	.home-panel {
+		padding: 20px;
+	}
 }
-
 </style>

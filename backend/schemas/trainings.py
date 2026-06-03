@@ -44,6 +44,7 @@ class TrainingStepUpdate(BaseModel):
     instruction_html: Optional[str] = None
     image_url: Optional[str] = None
     audio_url: Optional[str] = None
+    photo_dimensions: Optional[Dict[str, Any]] = None
     steps: Optional[List[Union["TrainingStepCreate", "TrainingStepUpdate"]]] = Field(
         default_factory=list
     )

@@ -3,6 +3,7 @@ import uuid
 from typing import Any, Dict, List, Optional, Union
 
 import requests
+from botocore.exceptions import ClientError
 from fastapi import HTTPException, UploadFile, status
 from PIL import Image
 from pydantic import UUID4
@@ -11,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from core.config import configs
 from core.logging_config import logger
 from models.trainings import (
     Tags,
@@ -49,6 +51,30 @@ ACTION_TYPE_KEY_TO_ID = {
     "text_input": 5,
     "key_chord": 6,
 }
+
+
+def _s3_object_key_from_public_url(image_url: str) -> Optional[str]:
+    """Из публичного URL объекта (как после upload_file) получить S3 key."""
+    from urllib.parse import unquote, urlparse
+
+    raw = (image_url or "").strip()
+    if not raw:
+        return None
+    ep = (configs.S3_ENDPOINT_URL or "").strip().rstrip("/")
+    bn = (configs.S3_BUCKET_NAME or "").strip()
+    if not ep or not bn or ep.startswith("S3_"):
+        return None
+    prefix = f"{ep}/{bn}/"
+    if raw.startswith(prefix):
+        return unquote(raw[len(prefix) :])
+    try:
+        path = unquote(urlparse(raw).path or "")
+    except Exception:
+        return None
+    marker = f"/{bn}/"
+    if marker in path:
+        return path.split(marker, 1)[1]
+    return None
 
 
 class TrainingsService:
@@ -508,6 +534,113 @@ class TrainingsService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Ошибка обновления шага: {str(e)}",
             )
+
+    async def replace_step_screenshot(
+        self,
+        training_uuid: UUID4,
+        step_id: int,
+        creator_id: int,
+        file_content: bytes,
+        original_filename: str,
+        s3_service: S3Service,
+    ) -> TrainingStepResponse:
+        if len(file_content) > 25 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Файл больше 25 МБ",
+            )
+        await self._require_training_owner(training_uuid, creator_id)
+        existing_step = await self.repo.get_step_by_id_and_training(
+            step_id, training_uuid
+        )
+        if not existing_step:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Шаг не найден",
+            )
+        try:
+            im = Image.open(io.BytesIO(file_content))
+            im.load()
+            w, h = im.size
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Не удалось прочитать изображение",
+            )
+
+        if im.mode in ("RGBA", "LA", "P"):
+            im = im.convert("RGBA")
+        else:
+            im = im.convert("RGB")
+
+        buf = io.BytesIO()
+        im.save(buf, format="PNG")
+        png_bytes = buf.getvalue()
+
+        object_name = s3_service.generate_unique_filename("step_edit.png")
+        image_url = await s3_service.upload_file(
+            png_bytes, object_name, training_uuid
+        )
+
+        return await self.update_step(
+            training_uuid,
+            step_id,
+            TrainingStepUpdate(
+                image_url=image_url,
+                photo_dimensions={"width": w, "height": h},
+            ),
+        )
+
+    async def get_step_screenshot_bytes(
+        self,
+        training_uuid: UUID4,
+        step_id: int,
+        creator_id: int,
+        s3_service: S3Service,
+    ) -> tuple[bytes, str]:
+        """Байты скриншота шага из S3 (для редактора без CORS в браузере)."""
+        await self._require_training_owner(training_uuid, creator_id)
+        step = await self.repo.get_step_by_id_and_training(step_id, training_uuid)
+        if not step or not step.image_url:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="У шага нет изображения",
+            )
+        key = _s3_object_key_from_public_url(str(step.image_url).strip())
+        if not key:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="URL изображения не совпадает с настроенным S3",
+            )
+        try:
+            obj = s3_service.s3_client.get_object(
+                Bucket=s3_service.bucket_name, Key=key
+            )
+        except ClientError as e:
+            code = (e.response or {}).get("Error", {}).get("Code", "")
+            if code in ("NoSuchKey", "404"):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Файл в хранилище не найден",
+                ) from e
+            logger.exception("S3 get_object для скриншота шага")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Ошибка чтения из хранилища",
+            ) from e
+
+        body: bytes = obj["Body"].read()
+        if len(body) > 25 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Файл слишком большой",
+            )
+        ct = obj.get("ContentType") or "image/png"
+        if isinstance(ct, str) and ";" in ct:
+            ct = ct.split(";")[0].strip()
+        if not str(ct).startswith("image/"):
+            ct = "image/png"
+        return body, ct
 
     async def delete_step(self, training_uuid: UUID4, step_id: int) -> bool:
         """Удаление шага по UUID тренинга и ID шага"""

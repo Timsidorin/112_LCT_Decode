@@ -1,4 +1,5 @@
-import {BaseApi} from "./BaseAPi.js";
+import { BaseApi } from "./BaseAPi.js";
+import axios from "axios";
 
 export class TrainingStepApi extends BaseApi {
 	constructor() {
@@ -23,6 +24,28 @@ export class TrainingStepApi extends BaseApi {
 		super.httpMethod = "delete";
 		super.sourceUrl = `/training/${trainingUuid}/steps/${stepId}`;
 		return super.createRequest();
+	}
+
+	replaceStepScreenshot(trainingUuid, stepId, blob, filename = "step-crop.png") {
+		const fd = new FormData();
+		fd.append("file", blob, filename);
+		super.httpMethod = "post";
+		super.sourceUrl = `/training/${trainingUuid}/steps/${stepId}/screenshot`;
+		super.data = fd;
+		super.headers = {};
+		return super.createRequest();
+	}
+
+	fetchStepScreenshotBlob(trainingUuid, stepId) {
+		const token =
+			typeof localStorage !== "undefined" ? localStorage.getItem("tokenAuth") : "";
+		return axios.get(
+			`${__BASE__URL__}/training/${trainingUuid}/steps/${stepId}/screenshot-source`,
+			{
+				responseType: "blob",
+				headers: token ? { Authorization: `Bearer ${token}` } : {},
+			}
+		);
 	}
 }
 

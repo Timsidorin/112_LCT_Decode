@@ -13,11 +13,17 @@ import {
 	TrainingWelcomePage,
 	TrainingPlayPage,
 	CourseCreatePage,
+	YandexOAuthCallbackPage,
 } from "@pages";
 
 export const routes = [
 	{ path: "/", component: LandingPage, name: 'LandingPage' },
 	{ path: "/login", component: LoginPage, name: 'LoginPage' },
+	{
+		path: "/login/yandex/callback",
+		component: YandexOAuthCallbackPage,
+		name: "YandexOAuthCallback",
+	},
 	{ path: "/registration", component: RegistrationPage},
 	{ 	
 		path: "/personal", 

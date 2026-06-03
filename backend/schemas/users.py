@@ -1,5 +1,6 @@
 import re
 from enum import Enum
+from typing import Optional
 
 from fastapi import Form
 from pydantic import BaseModel, EmailStr, Field, field_validator, validator
@@ -39,5 +40,16 @@ class UserLogin(BaseModel):
     password: str
 
 
-class UserResponse(User):
+class UserResponse(BaseModel):
+    """Ответ API: поля из БД без жёстких правил регистрации (короткие имена из VK и т.п.)."""
+
     id: int
+    email: EmailStr
+    phone_number: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    photo: Optional[str] = None
+    yandex_id: Optional[str] = None
+
+    class Config:
+        from_attributes = True

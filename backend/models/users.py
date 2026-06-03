@@ -25,6 +25,7 @@ class User(Base):
         sa.DateTime, server_default=text("NOW()")
     )
     photo: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
+    yandex_id: Mapped[Optional[str]] = mapped_column(sa.String(64), nullable=True, index=True, unique=True)
     created_trainings: Mapped[List["Training"]] = relationship(
         "models.trainings.Training", back_populates="creator"
     )
