@@ -65,7 +65,6 @@
 						type="button"
 						class="yandex-id-round"
 						aria-label="Войти с Яндексом"
-						:disable="!yandexOAuthReady"
 						@click="startYandexOAuth"
 					>
 						<YandexMark class="yandex-id-round__mark" :size="32" />
@@ -83,7 +82,6 @@
 <script>
 import axios from "axios";
 import { BaseCard, YandexMark } from "@components/base_components";
-import { authApi } from "@api";
 import { useUserStore } from "@store/userData.js";
 export default {
 	name: "LoginForm",
@@ -95,17 +93,7 @@ export default {
 
 			loader: false,
 			isPwd: true,
-			yandexOAuthReady: false,
 		};
-	},
-	async mounted() {
-		try {
-			const { data } = await authApi.getYandexConfig();
-			this.yandexOAuthReady = !!data.client_id;
-		} catch (e) {
-			console.error("Failed to load Yandex config", e);
-			this.yandexOAuthReady = false;
-		}
 	},
 	methods: {
 		startYandexOAuth() {
@@ -255,11 +243,6 @@ export default {
 	box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 	transition: transform 0.25s var(--anim-ease-spring), box-shadow 0.25s ease,
 		border-color 0.2s ease;
-}
-
-.yandex-id-round:disabled {
-	opacity: 0.45;
-	cursor: not-allowed;
 }
 
 .yandex-id-round:hover {
