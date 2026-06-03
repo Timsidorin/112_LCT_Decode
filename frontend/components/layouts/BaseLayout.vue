@@ -72,11 +72,13 @@
 		</q-drawer>
 
 		<q-page-container class="page-container">
-			<router-view v-slot="{ Component }">
-				<transition name="fade-page" mode="out-in">
-					<component :is="Component" />
-				</transition>
-			</router-view>
+			<div class="page-content-slot">
+				<router-view v-slot="{ Component, route }">
+					<transition name="content-in" appear>
+						<component :is="Component" :key="route.path" class="page-content-view" />
+					</transition>
+				</router-view>
+			</div>
 		</q-page-container>
 	</q-layout>
 </template>
@@ -341,20 +343,54 @@ export default {
 	z-index: 1;
 }
 
-/* Анимация переходов между страницами */
-.fade-page-enter-active,
-.fade-page-leave-active {
-	transition: opacity 0.2s ease, transform 0.2s ease;
+.page-content-slot {
+	position: relative;
+	width: 100%;
+	min-height: 100%;
 }
 
-.fade-page-enter-from {
+.page-content-view {
+	width: 100%;
+}
+
+/* Плавное появление контента при смене раздела */
+.content-in-enter-active {
+	position: relative;
+	z-index: 1;
+	transition: opacity 0.38s var(--anim-ease-out, ease-out),
+		transform 0.38s var(--anim-ease-out, ease-out);
+	will-change: opacity, transform;
+}
+
+.content-in-enter-from {
 	opacity: 0;
 	transform: translateY(8px);
 }
 
-.fade-page-leave-to {
+.content-in-leave-active {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 0;
+	pointer-events: none;
+	transition: opacity 0.22s var(--anim-ease-in-out, ease-in-out);
+}
+
+.content-in-leave-to {
 	opacity: 0;
-	transform: translateY(-8px);
+}
+
+/* Внутри раздела — одна общая анимация, без каскада stagger */
+.page-container :deep(.animate-fade-in-up),
+.page-container :deep(.animate-scale-in) {
+	animation: none;
+	opacity: 1;
+}
+
+.page-container :deep(.animate-stagger-children > *) {
+	animation: none;
+	opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -362,6 +398,17 @@ export default {
 		backdrop-filter: none;
 		-webkit-backdrop-filter: none;
 		background: #eef0f6 !important;
+	}
+
+	.content-in-enter-active,
+	.content-in-leave-active {
+		transition: none !important;
+	}
+
+	.content-in-enter-from,
+	.content-in-leave-to {
+		opacity: 1;
+		transform: none;
 	}
 }
 </style>
