@@ -16,8 +16,6 @@
 			</div>
 
 			<div v-else class="home-stack animate-stagger-children">
-				<MediaUploadPanel />
-
 				<!-- Сводка -->
 				<section class="home-panel" aria-labelledby="home-summary-heading">
 					<div class="home-panel__head">
@@ -200,7 +198,6 @@ import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useUserStore } from "@store/userData.js";
 import { TrainingApi } from "@api";
-import MediaUploadPanel from "@components/features/tasks/MediaUploadPanel.vue";
 
 const router = useRouter();
 const userStore = useUserStore();
