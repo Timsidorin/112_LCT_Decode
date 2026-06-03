@@ -59,23 +59,18 @@
 						Войти с помощью
 					</div>
 
-					<!-- Если виджет заблокирован или не загрузился, показываем фоллбэк-кнопку -->
 					<q-btn
-						v-if="yandexWidgetError"
 						round
-						flat
-						dense
+						unelevated
 						type="button"
 						class="yandex-id-round"
 						aria-label="Войти с Яндексом"
-						@click.prevent="startYandexFallback()"
+						:disable="!yandexOAuthReady"
+						@click="startYandexOAuth"
 					>
 						<YandexMark class="yandex-id-round__mark" :size="32" />
 					</q-btn>
 
-					<!-- Контейнер для официального виджета -->
-					<div v-show="!yandexWidgetError" id="yandex-auth-container" class="yandex-widget-container"></div>
-					
 					<div class="text-caption text-grey-6 q-mt-xs text-center">
 						Яндекс ID
 					</div>
@@ -100,95 +95,25 @@ export default {
 
 			loader: false,
 			isPwd: true,
-			yandexWidgetError: false,
+			yandexOAuthReady: false,
 		};
 	},
 	async mounted() {
 		try {
 			const { data } = await authApi.getYandexConfig();
-			if (data.client_id) {
-				this.initYandexWidget(data.client_id, data.redirect_uri);
-			}
+			this.yandexOAuthReady = !!data.client_id;
 		} catch (e) {
 			console.error("Failed to load Yandex config", e);
+			this.yandexOAuthReady = false;
 		}
 	},
 	methods: {
-		startYandexFallback() {
+		startYandexOAuth() {
 			const next =
 				(typeof this.$route.query.redirect === "string" && this.$route.query.redirect) ||
 				"/personal";
 			const url = `${__BASE__URL__}/auth/yandex/start?next=${encodeURIComponent(next)}`;
-			window.location.href = url;
-		},
-		initYandexWidget(clientId, redirectUri) {
-			const init = () => {
-				if (!window.YaAuthSuggest) {
-					this.yandexWidgetError = true;
-					return;
-				}
-				window.YaAuthSuggest.init(
-					{
-						client_id: clientId,
-						response_type: "token",
-						redirect_uri: redirectUri,
-					},
-					window.location.origin,
-					{
-						view: "button",
-						parentId: "yandex-auth-container",
-						buttonView: "icon",
-						buttonTheme: "light",
-						buttonSize: "m",
-						buttonBorderRadius: 22,
-					}
-				)
-					.then(({ handler }) => handler())
-					.then(async (data) => {
-						if (data.access_token) {
-							this.loader = true;
-							try {
-								const res = await authApi.sendYandexToken(data.access_token);
-								localStorage.setItem("tokenAuth", res.data.access_token);
-								await useUserStore().fetchUser();
-								const redirect = this.$route.query.redirect || "/personal";
-								this.$router.push(redirect);
-							} catch (err) {
-								this.$q.notify({
-									type: "negative",
-									message: "Ошибка авторизации через Яндекс",
-									position: "top",
-								});
-							} finally {
-								this.loader = false;
-							}
-						}
-					})
-					.catch((error) => {
-						console.log("Yandex widget closed or error", error);
-						if (error && error.code === "not_available") {
-							this.yandexWidgetError = true;
-						} else {
-							this.$q.notify({
-								type: "warning",
-								message: "Окно входа закрыто или неверно настроен Redirect URI в консоли Яндекса",
-								position: "top",
-							});
-						}
-					});
-			};
-
-			if (window.YaAuthSuggest) {
-				init();
-			} else {
-				const script = document.createElement("script");
-				script.src = "https://yastatic.net/s3/passport-sdk/autofill/v1/sdk-suggest-with-polyfills-latest.js";
-				script.onload = init;
-				script.onerror = () => {
-					this.yandexWidgetError = true;
-				};
-				document.head.appendChild(script);
-			}
+			window.location.assign(url);
 		},
 		async login() {
 			this.loader = true;
@@ -317,14 +242,6 @@ export default {
 	max-width: 280px;
 }
 
-.yandex-widget-container {
-	width: 44px;
-	height: 44px;
-	display: flex;
-	justify-content: center;
-	align-items: center;
-}
-
 .yandex-id-round {
 	width: 44px !important;
 	height: 44px !important;
@@ -332,11 +249,17 @@ export default {
 	min-height: 44px !important;
 	padding: 0 !important;
 	border-radius: 50% !important;
+	cursor: pointer;
 	background: #f8fafc !important;
 	border: 1px solid #e2e8f0 !important;
 	box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 	transition: transform 0.25s var(--anim-ease-spring), box-shadow 0.25s ease,
 		border-color 0.2s ease;
+}
+
+.yandex-id-round:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
 }
 
 .yandex-id-round:hover {
