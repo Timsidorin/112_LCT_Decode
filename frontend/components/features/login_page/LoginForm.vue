@@ -70,13 +70,7 @@
 						aria-label="Войти с Яндексом"
 						@click.prevent="startYandexFallback()"
 					>
-						<img
-							class="yandex-id-round__mark"
-							src="/icons/yandex.svg"
-							width="32"
-							height="32"
-							alt=""
-						/>
+						<YandexMark class="yandex-id-round__mark" :size="32" />
 					</q-btn>
 
 					<!-- Контейнер для официального виджета -->
@@ -93,12 +87,12 @@
 
 <script>
 import axios from "axios";
-import { BaseCard } from "@components/base_components";
+import { BaseCard, YandexMark } from "@components/base_components";
 import { authApi } from "@api";
 import { useUserStore } from "@store/userData.js";
 export default {
 	name: "LoginForm",
-	components: { BaseCard },
+	components: { BaseCard, YandexMark },
 	data() {
 		return {
 			email: "",

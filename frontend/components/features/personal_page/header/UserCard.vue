@@ -20,11 +20,10 @@
 					class="user-avatar-img"
 					alt=""
 				/>
-				<img
+				<YandexMark
 					v-else-if="userStore.isYandexUser"
-					src="/icons/yandex.svg"
-					class="user-avatar-img user-avatar-img--yandex"
-					alt=""
+					:size="36"
+					class="user-avatar-yandex"
 				/>
 				<template v-else>{{ userInitials }}</template>
 			</q-avatar>
@@ -69,7 +68,7 @@
 				<div class="absolute-bottom bg-transparent profile-avatar-container">
 					<q-avatar size="84px" class="profile-avatar shadow-4">
 						<img v-if="userStore.photo" :src="userStore.photo" />
-						<img v-else-if="userStore.isYandexUser" src="/icons/yandex.svg" class="bg-white q-pa-xs" />
+						<YandexMark v-else-if="userStore.isYandexUser" :size="84" class="bg-white q-pa-xs" />
 						<span v-else class="bg-primary text-white">{{ userInitials }}</span>
 					</q-avatar>
 					<q-btn round dense color="primary" icon="edit" class="profile-avatar-edit" size="sm" />
@@ -82,7 +81,10 @@
 						<div class="text-h5 text-weight-bold text-blue-grey-9">{{ userStore.fullName }}</div>
 						<div class="text-blue-grey-5">{{ userStore.email }}</div>
 					</div>
-					<q-chip v-if="userStore.isYandexUser" color="red-1" text-color="red-7" icon="img:/icons/yandex.svg" class="text-weight-medium">
+					<q-chip v-if="userStore.isYandexUser" color="red-1" text-color="red-7" class="text-weight-medium">
+						<template #avatar>
+							<YandexMark :size="20" />
+						</template>
 						Yandex ID
 					</q-chip>
 					<q-chip v-else color="blue-1" text-color="blue-7" icon="verified_user" class="text-weight-medium">
@@ -240,6 +242,7 @@ import { computed, ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useQuasar } from "quasar";
 import { useUserStore } from "@store/userData.js";
+import { YandexMark } from "@components/base_components";
 
 const $q = useQuasar();
 const router = useRouter();
@@ -340,10 +343,12 @@ onMounted(() => {
 	border-radius: inherit;
 }
 
-.user-avatar-img--yandex {
-	object-fit: contain;
+.user-avatar-yandex {
+	display: block;
+	margin: auto;
 	padding: 5px;
 	background: #fff;
+	border-radius: inherit;
 }
 
 .user-name {
