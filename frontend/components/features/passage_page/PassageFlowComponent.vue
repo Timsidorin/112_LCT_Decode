@@ -60,75 +60,79 @@
 						<!-- Оверлеи визуальной обратной связи -->
 						<div v-if="showCorrectFeedback" class="feedback-overlay feedback-overlay--correct" />
 						<div v-if="showWrongFeedback" class="feedback-overlay feedback-overlay--wrong" />
-					<!-- Область действия: при включённых подсказках после ошибки — подсветка / автозаполнение текста -->
-					<div
-						v-if="showAreaVisible && area && (area.width > 0 && area.height > 0)"
-						class="action-area"
-						:class="[
-							areaClass,
-							{
-								'action-area--text-bare': isInputText && isPassageMode,
-								'action-area--hint-pulse':
-									isPassageMode && showHintHighlight && !isInputText,
-								'action-area--text-hint-pulse':
-									isPassageMode && showHintHighlight && isInputText,
-							},
-						]"
-						:style="areaStyle"
-						@click.stop="onAreaClick"
-						@dblclick.stop="onAreaDblClick"
-						@contextmenu.prevent.stop="onAreaContextMenu"
-						@mouseenter="onAreaMouseEnter"
-						@mouseleave="onAreaMouseLeave"
-					>
-						<div
-							v-if="isInputText && isPassageMode"
-							class="overlay-input-wrap"
-							@click.stop
-						>
-							<div class="overlay-input-stack">
+
+						<!-- Слой видимого контента изображения (без letterbox-полей) -->
+						<div class="image-content-layer" :style="contentLayerStyle">
+							<!-- Область действия: при включённых подсказках после ошибки — подсветка / автозаполнение текста -->
+							<div
+								v-if="showAreaVisible && area && (area.width > 0 && area.height > 0)"
+								class="action-area"
+								:class="[
+									areaClass,
+									{
+										'action-area--text-bare': isInputText && isPassageMode,
+										'action-area--hint-pulse':
+											isPassageMode && showHintHighlight && !isInputText,
+										'action-area--text-hint-pulse':
+											isPassageMode && showHintHighlight && isInputText,
+									},
+								]"
+								:style="areaStyle"
+								@click.stop="onAreaClick"
+								@dblclick.stop="onAreaDblClick"
+								@contextmenu.prevent.stop="onAreaContextMenu"
+								@mouseenter="onAreaMouseEnter"
+								@mouseleave="onAreaMouseLeave"
+							>
 								<div
-									class="overlay-text-mirror"
-									:class="{ 'overlay-text-mirror--hint-type': isHintTyping }"
-									:style="overlayInputStyle"
-									aria-hidden="true"
+									v-if="isInputText && isPassageMode"
+									class="overlay-input-wrap"
+									@click.stop
 								>
-									{{ overlayDisplayValue }}<span
-										v-if="isHintTyping"
-										class="overlay-typewriter-caret"
-									/>
+									<div class="overlay-input-stack">
+										<div
+											class="overlay-text-mirror"
+											:class="{ 'overlay-text-mirror--hint-type': isHintTyping }"
+											:style="overlayInputStyle"
+											aria-hidden="true"
+										>
+											{{ overlayDisplayValue }}<span
+												v-if="isHintTyping"
+												class="overlay-typewriter-caret"
+											/>
+										</div>
+										<textarea
+											ref="overlayInputRef"
+											v-model="inputValue"
+											class="overlay-input overlay-input--ghost-text"
+											:class="{ 'overlay-input--hint-typing': isHintTyping, 'overlay-input--error': isInputError }"
+											:style="overlayInputStyle"
+											rows="1"
+											wrap="off"
+											autocomplete="off"
+											spellcheck="false"
+											aria-label="Ввод текста по заданию"
+											placeholder=""
+											@input="onOverlayInput"
+											@scroll="onOverlayScroll"
+											@paste="onOverlayPaste"
+											@keydown="onOverlayKeydown"
+											@blur="onOverlayBlur"
+										/>
+									</div>
 								</div>
-								<textarea
-									ref="overlayInputRef"
-									v-model="inputValue"
-									class="overlay-input overlay-input--ghost-text"
-									:class="{ 'overlay-input--hint-typing': isHintTyping, 'overlay-input--error': isInputError }"
-									:style="overlayInputStyle"
-									rows="1"
-									wrap="off"
-									autocomplete="off"
-									spellcheck="false"
-									aria-label="Ввод текста по заданию"
-									placeholder=""
-									@input="onOverlayInput"
-									@scroll="onOverlayScroll"
-									@paste="onOverlayPaste"
-									@keydown="onOverlayKeydown"
-									@blur="onOverlayBlur"
-								/>
+								<template v-else>
+									<div v-if="!isPassageMode && isKeyPress" class="area-hint">
+										<q-icon name="keyboard" size="20px" />
+										<span>Нажмите: {{ hotkeyLabel }}</span>
+									</div>
+									<div v-else-if="!isPassageMode && isInputText" class="area-hint">
+										<q-icon name="edit" size="20px" />
+										<span>Укажите ожидаемый текст в панели и сохраните</span>
+									</div>
+								</template>
 							</div>
 						</div>
-						<template v-else>
-							<div v-if="!isPassageMode && isKeyPress" class="area-hint">
-								<q-icon name="keyboard" size="20px" />
-								<span>Нажмите: {{ hotkeyLabel }}</span>
-							</div>
-							<div v-else-if="!isPassageMode && isInputText" class="area-hint">
-								<q-icon name="edit" size="20px" />
-								<span>Укажите ожидаемый текст в панели и сохраните</span>
-							</div>
-						</template>
-					</div>
 					</div>
 				</div>
 			</div>
@@ -277,12 +281,46 @@ const currentActionEntry = computed(() => {
 	return seq[i];
 });
 
+function resolveAreaToPixels(rawArea, dims) {
+	if (!rawArea || !dims?.width || !dims?.height) return rawArea || {};
+	const W = Number(dims.width) || 1;
+	const H = Number(dims.height) || 1;
+	let x = Number(rawArea.x);
+	let y = Number(rawArea.y);
+	let w = Number(rawArea.width);
+	let h = Number(rawArea.height);
+	if (![x, y, w, h].every(Number.isFinite)) return rawArea;
+
+	// Вариант 1: нормализованные x,y,width,height (0..1).
+	if (
+		x >= 0 && y >= 0 && w > 0 && h > 0 &&
+		x <= 1 && y <= 1 && w <= 1 && h <= 1
+	) {
+		x *= W;
+		y *= H;
+		w *= W;
+		h *= H;
+	}
+	// Вариант 2: пришёл формат x1,y1,x2,y2 в пикселях.
+	else if (w > x && h > y && (x + w > W * 1.02 || y + h > H * 1.02)) {
+		w = w - x;
+		h = h - y;
+	}
+
+	return {
+		...rawArea,
+		x: Math.max(0, x),
+		y: Math.max(0, y),
+		width: Math.max(1, w),
+		height: Math.max(1, h),
+	};
+}
+
 const area = computed(() => {
 	const base = props.selectedStep?.area || {};
 	const e = currentActionEntry.value;
-	if (!e) return base;
-	const slice = areaViewFromEntry(e);
-	return { ...base, ...slice };
+	const merged = e ? { ...base, ...areaViewFromEntry(e) } : base;
+	return resolveAreaToPixels(merged, props.selectedStep?.photo_dimensions);
 });
 
 const actionType = computed(() => {
@@ -386,23 +424,27 @@ function updateImageContentLayout() {
 const areaStyle = computed(() => {
 	const a = area.value;
 	const step = props.selectedStep;
-	const fr = imageContentFracs.value;
 	if (!a || !a.width || !a.height || !step?.photo_dimensions) return {};
 	const imgW = step.photo_dimensions.width || 1;
 	const imgH = step.photo_dimensions.height || 1;
-	if (fr && Math.round(fr.logicalW) === Math.round(imgW) && Math.round(fr.logicalH) === Math.round(imgH)) {
-		return {
-			left: `${(fr.ox + (a.x / imgW) * fr.sw) * 100}%`,
-			top: `${(fr.oy + (a.y / imgH) * fr.sh) * 100}%`,
-			width: `${(a.width / imgW) * fr.sw * 100}%`,
-			height: `${(a.height / imgH) * fr.sh * 100}%`,
-		};
-	}
 	return {
 		left: `${(a.x / imgW) * 100}%`,
 		top: `${(a.y / imgH) * 100}%`,
 		width: `${(a.width / imgW) * 100}%`,
 		height: `${(a.height / imgH) * 100}%`,
+	};
+});
+
+const contentLayerStyle = computed(() => {
+	const fr = imageContentFracs.value;
+	if (!fr) {
+		return { left: "0%", top: "0%", width: "100%", height: "100%" };
+	}
+	return {
+		left: `${fr.ox * 100}%`,
+		top: `${fr.oy * 100}%`,
+		width: `${fr.sw * 100}%`,
+		height: `${fr.sh * 100}%`,
 	};
 });
 
@@ -1298,6 +1340,15 @@ onUnmounted(() => {
 
 .screenshot-img--outcome {
 	opacity: 0.97;
+}
+
+.image-content-layer {
+	position: absolute;
+	pointer-events: none;
+}
+
+.image-content-layer .action-area {
+	pointer-events: auto;
 }
 
 .action-area {

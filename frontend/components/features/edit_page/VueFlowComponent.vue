@@ -38,6 +38,41 @@ const { onPaneClick } = useVueFlow();
 
 const eventRequiresAreaOpt = (event) => eventRequiresArea(event);
 
+function normalizeAreaForCanvas(rawArea, photoDimensions) {
+	if (!rawArea || !photoDimensions?.width || !photoDimensions?.height) return rawArea;
+	const W = Number(photoDimensions.width) || 1;
+	const H = Number(photoDimensions.height) || 1;
+	let x = Number(rawArea.x);
+	let y = Number(rawArea.y);
+	let w = Number(rawArea.width);
+	let h = Number(rawArea.height);
+	if (![x, y, w, h].every(Number.isFinite)) return rawArea;
+
+	// 0..1 -> px
+	if (
+		x >= 0 && y >= 0 && w > 0 && h > 0 &&
+		x <= 1 && y <= 1 && w <= 1 && h <= 1
+	) {
+		x *= W;
+		y *= H;
+		w *= W;
+		h *= H;
+	}
+	// x1,y1,x2,y2 -> x,y,w,h
+	else if (w > x && h > y && (x + w > W * 1.02 || y + h > H * 1.02)) {
+		w = w - x;
+		h = h - y;
+	}
+
+	return {
+		...rawArea,
+		x: Math.max(0, Math.round(x)),
+		y: Math.max(0, Math.round(y)),
+		width: Math.max(1, Math.round(w)),
+		height: Math.max(1, Math.round(h)),
+	};
+}
+
 const drawingEnabled = computed(() => {
 	return !!store.selectedEvent && eventRequiresAreaOpt(store.selectedEvent);
 });
@@ -370,7 +405,7 @@ async function syncFlowFromStep() {
 
 	let ev = store.selectedEvent;
 	if (!ev || !eventRequiresAreaOpt(ev)) return;
-	const a = step.area;
+	const a = normalizeAreaForCanvas(step.area, step.photo_dimensions);
 	const areaMatchesEvent = step.action_type?.id === ev.id;
 	if (areaMatchesEvent && a?.width > 0 && a?.height > 0) {
 		createNode(ev, a.width, a.height, a.x ?? 0, a.y ?? 0);
