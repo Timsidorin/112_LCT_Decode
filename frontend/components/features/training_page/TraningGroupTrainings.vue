@@ -154,7 +154,12 @@
 						</q-btn-dropdown>
 					</div>
 
-					<div class="text-h6 text-weight-bold text-dark ellipsis q-mb-xs" :title="training.title">{{ training.title }}</div>
+					<div class="row items-center q-mb-md q-mt-sm">
+						<q-avatar v-if="training.icon" size="48px" rounded class="bg-grey-2 q-mr-md shadow-1">
+							<img :src="training.icon" style="object-fit: cover; width: 100%; height: 100%;" />
+						</q-avatar>
+						<div class="text-h6 text-weight-bold text-dark ellipsis" style="flex: 1" :title="training.title">{{ training.title }}</div>
+					</div>
 					
 					<div class="row items-center text-caption text-grey-6 q-mb-md q-gutter-x-md">
 						<span class="row items-center"><q-icon name="layers" size="18px" class="q-mr-xs"/> {{ training.steps_count ?? training.steps?.length ?? 0 }} шагов</span>
@@ -358,6 +363,28 @@ const publishTrainingData = ref(null);
 const searchQuery = ref("");
 const filterTab = ref("all");
 
+const handleTaskUpdate = (event) => {
+	const data = event.detail;
+	if (data.status === "completed") {
+		// Обновляем список тренингов в фоновом режиме (без спиннера)
+		getTrainings(true);
+	}
+};
+
+const unsubscribeCreated = trainingEvents.created.on(() => {
+	getTrainings();
+});
+
+onMounted(async () => {
+	await getTrainings();
+	window.addEventListener("training-task-update", handleTaskUpdate);
+});
+
+onUnmounted(() => {
+	unsubscribeCreated.off();
+	window.removeEventListener("training-task-update", handleTaskUpdate);
+});
+
 const filteredTrainings = computed(() => {
 	let result = trainings.value;
 	
@@ -460,10 +487,9 @@ async function openPassageStats(training) {
 	}
 }
 
-async function getTrainings() {
+async function getTrainings(background = false) {
 	try {
-		status.value = true;
-		trainings.value = [];
+		if (!background) status.value = true;
 		const response = await api.getTrainings();
 		trainings.value = response.data;
 	} catch (e) {
@@ -474,7 +500,7 @@ async function getTrainings() {
 			type: "negative",
 		});
 	} finally {
-		status.value = false;
+		if (!background) status.value = false;
 	}
 }
 
@@ -554,17 +580,6 @@ function editTraining(uuid) {
 	window.open(route.href, "_blank");
 }
 
-const unsubscribe = trainingEvents.created.on(() => {
-	getTrainings();
-});
-
-onMounted(() => {
-	getTrainings();
-});
-
-onUnmounted(() => {
-	unsubscribe.off();
-});
 </script>
 
 <style scoped>
@@ -780,9 +795,7 @@ onUnmounted(() => {
 	min-width: min(480px, 94vw);
 	max-width: 700px;
 	width: 100%;
-	border-radius: 18px;
 	overflow: hidden;
-	box-shadow: 0 24px 56px rgba(0, 0, 0, 0.14);
 	border-color: rgba(0, 0, 0, 0.08) !important;
 }
 

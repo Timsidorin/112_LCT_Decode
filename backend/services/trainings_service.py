@@ -579,9 +579,7 @@ class TrainingsService:
         png_bytes = buf.getvalue()
 
         object_name = s3_service.generate_unique_filename("step_edit.png")
-        image_url = await s3_service.upload_file(
-            png_bytes, object_name, training_uuid
-        )
+        image_url = await s3_service.upload_file(png_bytes, object_name, training_uuid)
 
         return await self.update_step(
             training_uuid,
@@ -770,24 +768,29 @@ class TrainingsService:
         from schemas.tasks import TaskCreateResponse, TaskStatusEnum
         from core.redis_pubsub import publish_task_notification
         from schemas.tasks import TaskNotificationPayload
-        from worker.tasks import process_training_video_task
-
         await self._require_training_owner(training_uuid, user_id)
 
         if not video_file.filename:
             raise HTTPException(status_code=400, detail="Имя файла обязательно")
 
-        content = await video_file.read()
-        if not content:
+        if video_file.file is None:
             raise HTTPException(status_code=400, detail="Пустой файл")
+
+        import asyncio
 
         object_key = s3_service.generate_task_object_key(
             user_id, video_file.filename, prefix=f"trainings/{training_uuid}/video"
         )
         content_type = video_file.content_type or "video/mp4"
-        file_url = s3_service.upload_bytes_sync(
-            content, object_key, content_type=content_type
-        )
+
+        # Потоковая загрузка файла в S3 без чтения всего видео в память web-процесса.
+        try:
+            await asyncio.to_thread(video_file.file.seek, 0)
+            file_url = await asyncio.to_thread(
+                s3_service.upload_fileobj_sync, video_file.file, object_key, content_type
+            )
+        finally:
+            await video_file.close()
 
         tasks_repo = TasksRepository(self.session)
         task = await tasks_repo.create(
@@ -800,9 +803,13 @@ class TrainingsService:
             training_uuid=training_uuid,
         )
 
-        process_training_video_task.delay(str(task.id))
+        # Ставим задачу в очередь без импорта worker-модулей в web-процесс.
+        from core.task_queue import enqueue_process_training_video
 
-        publish_task_notification(
+        await asyncio.to_thread(enqueue_process_training_video, str(task.id))
+
+        await asyncio.to_thread(
+            publish_task_notification,
             user_id,
             TaskNotificationPayload(
                 type="task_update",
@@ -869,6 +876,8 @@ class TrainingsService:
         creator_id: Optional[int] = None,
     ) -> List[Dict]:
         """Создаёт шаги тренинга из результата AI-анализа видео."""
+        import asyncio
+
         if creator_id is not None:
             await self._require_training_owner(training_uuid, creator_id)
         elif not await self.repo.check_training_exists(training_uuid):
@@ -891,8 +900,16 @@ class TrainingsService:
             for i, step_data in enumerate(ai_steps):
                 filename = f"video_ai_step_{i + 1:03d}.png"
                 object_name = s3_service.generate_unique_filename(filename)
-                image_url = await s3_service.upload_file(
-                    step_data.frame_bytes, object_name, training_uuid
+
+                # Загружаем в S3 в отдельном потоке
+                image_url = await asyncio.to_thread(
+                    s3_service.upload_bytes_sync,
+                    step_data.frame_bytes,
+                    object_name,
+                    "image/png",
+                )
+                image_url = (
+                    f"{s3_service.endpoint_url}/{s3_service.bucket_name}/{object_name}"
                 )
 
                 image_url_after: Optional[str] = None
@@ -900,39 +917,66 @@ class TrainingsService:
                     after_name = s3_service.generate_unique_filename(
                         f"video_ai_step_{i + 1:03d}_after.png"
                     )
-                    image_url_after = await s3_service.upload_file(
-                        step_data.after_frame_bytes, after_name, training_uuid
+                    await asyncio.to_thread(
+                        s3_service.upload_bytes_sync,
+                        step_data.after_frame_bytes,
+                        after_name,
+                        "image/png",
                     )
+                    image_url_after = f"{s3_service.endpoint_url}/{s3_service.bucket_name}/{after_name}"
 
                 bbox = step_data.bbox
-                # Нормализованные (0..1) и пиксельные bbox (legacy/шум модели).
-                # Если значения > 1 — трактуем как абсолютные пиксели кадра.
-                if max(bbox) > 1.0:
-                    x1 = max(0.0, min(float(step_data.frame_width), float(bbox[0])))
-                    y1 = max(0.0, min(float(step_data.frame_height), float(bbox[1])))
-                    x2 = max(0.0, min(float(step_data.frame_width), float(bbox[2])))
-                    y2 = max(0.0, min(float(step_data.frame_height), float(bbox[3])))
+                fw = float(step_data.frame_width or 1)
+                fh = float(step_data.frame_height or 1)
+                b0, b1, b2, b3 = [float(v) for v in bbox]
+                mx = max(b0, b1, b2, b3)
+
+                # Универсальная интерпретация bbox:
+                # - 0..1: нормализованный
+                # - 0..100: проценты
+                # - 0..1000: тысячные доли (legacy)
+                # - иначе: пиксели
+                if mx <= 1.0:
+                    sx = 1.0
+                elif mx <= 100.0:
+                    sx = 0.01
+                elif mx <= 1000.0:
+                    sx = 0.001
+                else:
+                    sx = None
+
+                if sx is not None:
+                    x1 = max(0.0, min(1.0, b0 * sx))
+                    y1 = max(0.0, min(1.0, b1 * sx))
+                    x2 = max(0.0, min(1.0, b2 * sx))
+                    y2 = max(0.0, min(1.0, b3 * sx))
                     x_min, x_max = min(x1, x2), max(x1, x2)
                     y_min, y_max = min(y1, y2), max(y1, y2)
                     area: Dict[str, Any] = {
+                        "x": x_min * fw,
+                        "y": y_min * fh,
+                        "width": max(1.0, (x_max - x_min) * fw),
+                        "height": max(1.0, (y_max - y_min) * fh),
+                    }
+                else:
+                    x1 = max(0.0, min(fw, b0))
+                    y1 = max(0.0, min(fh, b1))
+                    x2 = max(0.0, min(fw, b2))
+                    y2 = max(0.0, min(fh, b3))
+                    x_min, x_max = min(x1, x2), max(x1, x2)
+                    y_min, y_max = min(y1, y2), max(y1, y2)
+                    area = {
                         "x": x_min,
                         "y": y_min,
                         "width": max(1.0, x_max - x_min),
                         "height": max(1.0, y_max - y_min),
                     }
-                else:
-                    x1 = max(0.0, min(1.0, float(bbox[0])))
-                    y1 = max(0.0, min(1.0, float(bbox[1])))
-                    x2 = max(0.0, min(1.0, float(bbox[2])))
-                    y2 = max(0.0, min(1.0, float(bbox[3])))
-                    x_min, x_max = min(x1, x2), max(x1, x2)
-                    y_min, y_max = min(y1, y2), max(y1, y2)
-                    area = {
-                        "x": x_min * step_data.frame_width,
-                        "y": y_min * step_data.frame_height,
-                        "width": max(1.0, (x_max - x_min) * step_data.frame_width),
-                        "height": max(1.0, (y_max - y_min) * step_data.frame_height),
-                    }
+
+                # Жёсткая защита от аномалий размера (слишком крупная/слишком мелкая область)
+                max_w = fw * 0.7
+                max_h = fh * 0.7
+                area["width"] = max(1.0, min(float(area["width"]), max_w))
+                area["height"] = max(1.0, min(float(area["height"]), max_h))
 
                 action_key = (step_data.action_type_key or "left_click").lower()
                 action_type_id = ACTION_TYPE_KEY_TO_ID.get(
@@ -948,7 +992,8 @@ class TrainingsService:
                     "name": step_data.step_title,
                     "source": "video_ai",
                     "ai_timecode": step_data.timecode,
-                    "ai_timecode_before": step_data.timecode_before or step_data.timecode,
+                    "ai_timecode_before": step_data.timecode_before
+                    or step_data.timecode,
                     "ai_timecode_after": step_data.timecode_after,
                 }
                 if image_url_after:
@@ -968,6 +1013,7 @@ class TrainingsService:
                     annotation=step_data.instruction_md,
                 )
                 self.session.add(new_step)
+                await self.session.commit()
 
                 created_steps_info.append(
                     {
@@ -988,7 +1034,6 @@ class TrainingsService:
                     }
                 )
 
-            await self.session.commit()
             return created_steps_info
 
         except HTTPException:

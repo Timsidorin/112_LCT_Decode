@@ -726,7 +726,6 @@ function toggleHintsForCurrentStep() {
 
 /* ——— Модальное окно завершения ——— */
 .completion-modal {
-	border-radius: 20px;
 	min-width: 360px;
 	overflow: hidden;
 }

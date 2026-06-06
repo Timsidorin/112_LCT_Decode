@@ -49,6 +49,14 @@ export class TrainingApi extends BaseApi {
 		return super.createRequest();
 	}
 
+	uploadIcon(uuid, formData) {
+		super.params = {};
+		super.httpMethod = 'post';
+		super.sourceUrl = `/training/upload-icon/${uuid}`;
+		super.data = formData;
+		return super.createRequest();
+	}
+
 	unpublishTraining(uuid) {
 		super.params = {};
 		super.httpMethod = 'post';

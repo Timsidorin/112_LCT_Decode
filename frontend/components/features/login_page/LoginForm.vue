@@ -83,6 +83,7 @@
 import axios from "axios";
 import { BaseCard, YandexMark } from "@components/base_components";
 import { useUserStore } from "@store/userData.js";
+import { ensureNotificationsConnected } from "@store/notifications.js";
 export default {
 	name: "LoginForm",
 	components: { BaseCard, YandexMark },
@@ -113,6 +114,7 @@ export default {
 				.then(async (response) => {
 					localStorage.setItem("tokenAuth", response.data.access_token);
 					await useUserStore().fetchUser();
+					ensureNotificationsConnected();
 					const redirect = this.$route.query.redirect || "/personal";
 					this.$router.push(redirect);
 				})

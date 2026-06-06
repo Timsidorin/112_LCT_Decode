@@ -53,6 +53,96 @@
 	background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
 }
 
+/* ——— Beautiful Notifications ——— */
+.beautiful-notify {
+	border-radius: 16px !important;
+	padding: 16px 20px !important;
+	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15) !important;
+	font-weight: 500;
+	letter-spacing: 0.01em;
+}
+
+.beautiful-notify .q-notification__message {
+	font-weight: 700 !important;
+	font-size: 15px !important;
+	margin-bottom: 4px;
+}
+
+.beautiful-notify .q-notification__caption {
+	font-size: 13px !important;
+	opacity: 0.9;
+}
+
+.beautiful-notify .q-btn {
+	border-radius: 10px !important;
+	font-weight: 600;
+	padding: 6px 16px;
+	background: rgba(255, 255, 255, 0.15);
+	transition: background 0.2s ease;
+}
+
+.beautiful-notify .q-btn:hover {
+	background: rgba(255, 255, 255, 0.25);
+}
+
+/* ——— Global Dialog Styles (Modern & Unified) ——— */
+.q-dialog__backdrop {
+	backdrop-filter: blur(6px);
+	background: rgba(15, 23, 42, 0.4) !important;
+}
+
+.q-dialog__inner > .q-card {
+	border-radius: 20px !important;
+	box-shadow: 0 24px 48px rgba(15, 23, 42, 0.15) !important;
+	border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.q-dialog__inner--maximized > .q-card {
+	border-radius: 0 !important;
+	box-shadow: none !important;
+	border: none !important;
+}
+
+/* Specific styling for Quasar's programmatic dialogs ($q.dialog) */
+.q-dialog-plugin {
+	padding: 8px 0;
+}
+
+.q-dialog-plugin .q-card__section {
+	padding: 20px 32px 12px;
+}
+
+.q-dialog-plugin .q-dialog__title {
+	font-weight: 800 !important;
+	font-size: 22px !important;
+	color: #0f172a;
+	letter-spacing: -0.01em;
+}
+
+.q-dialog-plugin .q-dialog__message {
+	font-size: 15px;
+	color: #475569;
+	line-height: 1.5;
+	margin-top: 8px;
+}
+
+.q-dialog-plugin .q-card__actions {
+	padding: 16px 32px 16px;
+	gap: 12px;
+}
+
+.q-dialog-plugin .q-card__actions .q-btn {
+	border-radius: 12px !important;
+	padding: 8px 20px;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+}
+
+/* Input fields inside programmatic dialogs */
+.q-dialog-plugin .q-input .q-field__control {
+	border-radius: 12px;
+}
+
 body {
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
 	background-color: #f5f6fa;

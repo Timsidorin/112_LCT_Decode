@@ -225,8 +225,6 @@ function shareByEmail() {
 	min-width: 400px;
 	width: 700px;
 	max-width: 95vw;
-	border-radius: 16px;
-	box-shadow: 0 24px 56px rgba(0, 0, 0, 0.14);
 	animation: scaleIn 0.3s var(--anim-ease-spring) forwards;
 }
 .publish-modal-card .modal-header {

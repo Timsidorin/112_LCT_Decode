@@ -380,9 +380,7 @@ onMounted(() => {
 .profile-card {
 	width: 100%;
 	max-width: 540px;
-	border-radius: 20px;
 	overflow: hidden;
-	box-shadow: 0 24px 56px rgba(15, 23, 42, 0.2);
 }
 
 .profile-banner {

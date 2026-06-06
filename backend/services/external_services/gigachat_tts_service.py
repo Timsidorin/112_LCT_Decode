@@ -16,7 +16,9 @@ class GigaChatTTSService:
 
     async def get_access_token(self) -> str:
         if not self.auth_data or self.auth_data in ("your-base64-auth-here", ""):
-            raise HTTPException(status_code=500, detail="Ключ авторизации SaluteSpeech не настроен")
+            raise HTTPException(
+                status_code=500, detail="Ключ авторизации SaluteSpeech не настроен"
+            )
 
         url = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
         headers = {
@@ -29,20 +31,27 @@ class GigaChatTTSService:
 
         async with httpx.AsyncClient(verify=False) as client:
             try:
-                response = await client.post(url, headers=headers, data=data, timeout=15.0)
+                response = await client.post(
+                    url, headers=headers, data=data, timeout=15.0
+                )
                 logger.info(f"[TTS] OAuth ответ: {response.status_code}")
                 if response.status_code != 200:
                     logger.error(f"[TTS] OAuth ошибка: {response.text}")
                     raise HTTPException(
                         status_code=500,
-                        detail=f"Ошибка авторизации SaluteSpeech: HTTP {response.status_code} — {response.text}"
+                        detail=f"Ошибка авторизации SaluteSpeech: HTTP {response.status_code} — {response.text}",
                     )
                 return response.json().get("access_token")
             except HTTPException:
                 raise
             except Exception as e:
-                logger.error(f"[TTS] Ошибка получения токена: {e}\n{traceback.format_exc()}")
-                raise HTTPException(status_code=500, detail=f"Ошибка авторизации в SaluteSpeech: {str(e)}")
+                logger.error(
+                    f"[TTS] Ошибка получения токена: {e}\n{traceback.format_exc()}"
+                )
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Ошибка авторизации в SaluteSpeech: {str(e)}",
+                )
 
     def _text_to_ssml(self, html_text: str) -> str:
         """Конвертирует HTML/Markdown текст в SSML с паузами"""
@@ -50,12 +59,19 @@ class GigaChatTTSService:
             return "<speak></speak>"
 
         # Заменяем блочные HTML-теги на переносы строк
-        text = re.sub(r"</?(h[1-6]|p|div|li|br)[^>]*>", "\n", html_text, flags=re.IGNORECASE)
+        text = re.sub(
+            r"</?(h[1-6]|p|div|li|br)[^>]*>", "\n", html_text, flags=re.IGNORECASE
+        )
         # Убираем оставшиеся HTML-теги
         text = re.sub(r"<[^>]+>", "", text)
         # Декодируем HTML-сущности вручную
-        text = text.replace("&nbsp;", " ").replace("&amp;", "и").replace("&lt;", "меньше") \
-                   .replace("&gt;", "больше").replace("&quot;", '"')
+        text = (
+            text.replace("&nbsp;", " ")
+            .replace("&amp;", "и")
+            .replace("&lt;", "меньше")
+            .replace("&gt;", "больше")
+            .replace("&quot;", '"')
+        )
         # Убираем символы Markdown
         text = text.replace("**", "").replace("*", "").replace("`", "").replace("#", "")
         # Убираем эмодзи (некорректно озвучиваются)
@@ -69,21 +85,21 @@ class GigaChatTTSService:
         for line in lines:
             if not line:
                 continue
-            
+
             # Для улучшения прочтения аббревиатур или технических слов диктором
-            # мы можем использовать возможности голоса. Женский голос 'Nec_24000' 
+            # мы можем использовать возможности голоса. Женский голос 'Nec_24000'
             # справляется с ударениями значительно лучше мужских.
-            
+
             # Возвращаем теги предложений
-            ssml_parts.append(f'<s>{line}</s>')
+            ssml_parts.append(f"<s>{line}</s>")
 
         # Собираем SSML: длинная пауза между логическими блоками
         inner = '<break time="600ms"/>'.join(ssml_parts)
 
         # Возвращаем паузы после знаков препинания (как было раньше) для выразительности
-        inner = re.sub(r'([,;:])\s+', r'\1<break time="200ms"/> ', inner)
+        inner = re.sub(r"([,;:])\s+", r'\1<break time="200ms"/> ', inner)
 
-        return f'<speak>{inner}</speak>'
+        return f"<speak>{inner}</speak>"
 
     async def synthesize(self, text: str) -> bytes:
         if not text:
@@ -98,9 +114,9 @@ class GigaChatTTSService:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/ssml",
         }
-        
+
         # Используем женский голос `Nec_24000` (Наташа).
-        # В SberSpeech этот голос обладает одной из лучших систем автоматической 
+        # В SberSpeech этот голос обладает одной из лучших систем автоматической
         # расстановки ударений, и он звучит очень выразительно.
         params = {
             "format": "wav16",
@@ -116,16 +132,22 @@ class GigaChatTTSService:
                     content=ssml.encode("utf-8"),
                     timeout=60.0,
                 )
-                logger.info(f"[TTS] Синтез ответ: {response.status_code}, bytes={len(response.content)}")
+                logger.info(
+                    f"[TTS] Синтез ответ: {response.status_code}, bytes={len(response.content)}"
+                )
                 if response.status_code != 200:
                     logger.error(f"[TTS] Синтез ошибка: {response.text}")
                     raise HTTPException(
                         status_code=500,
-                        detail=f"Ошибка SaluteSpeech TTS: HTTP {response.status_code} — {response.text}"
+                        detail=f"Ошибка SaluteSpeech TTS: HTTP {response.status_code} — {response.text}",
                     )
                 return response.content
             except HTTPException:
                 raise
             except Exception as e:
-                logger.error(f"[TTS] Неожиданная ошибка синтеза: {e}\n{traceback.format_exc()}")
-                raise HTTPException(status_code=500, detail=f"Ошибка синтеза речи: {str(e)}")
+                logger.error(
+                    f"[TTS] Неожиданная ошибка синтеза: {e}\n{traceback.format_exc()}"
+                )
+                raise HTTPException(
+                    status_code=500, detail=f"Ошибка синтеза речи: {str(e)}"
+                )

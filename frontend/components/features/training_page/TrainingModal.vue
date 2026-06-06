@@ -18,6 +18,25 @@
 				<div class="row q-col-gutter-xl">
 					<!-- Левая колонка -->
 					<div class="col-12 col-md-6 column">
+						<!-- Иконка (опционально) -->
+						<div class="form-section form-section--spaced">
+							<div class="form-section-label">
+								<q-icon name="image" size="18px" />
+								<span>Иконка тренинга (необязательно)</span>
+							</div>
+							<div class="icon-upload-container row items-center q-gutter-md">
+								<q-avatar size="64px" rounded class="bg-grey-2 icon-preview">
+									<img v-if="iconPreviewUrl" :src="iconPreviewUrl" style="object-fit: cover; width: 100%; height: 100%;" />
+									<q-icon v-else name="school" color="grey-5" size="32px" />
+								</q-avatar>
+								<div class="column">
+									<q-btn outline color="primary" label="Загрузить" size="sm" @click="triggerIconUpload" />
+									<input type="file" ref="iconInput" @change="handleIconSelect" accept="image/jpeg, image/png, image/webp" style="display: none" />
+									<span class="text-caption text-grey-6 q-mt-xs">JPG, PNG до 2MB</span>
+								</div>
+							</div>
+						</div>
+
 						<!-- Основное -->
 						<div class="form-section form-section--spaced" style="flex: 1">
 							<div class="form-section-label">
@@ -257,6 +276,33 @@ const currentInputValue = ref("");
 const tagSelectRef = ref(null);
 const creatingTag = ref(false);
 
+const iconInput = ref(null);
+const selectedIconFile = ref(null);
+const iconPreviewUrl = ref(null);
+
+const triggerIconUpload = () => {
+	if (iconInput.value) {
+		iconInput.value.click();
+	}
+};
+
+const handleIconSelect = (event) => {
+	const file = event.target.files[0];
+	if (!file) return;
+	
+	if (file.size > 2 * 1024 * 1024) {
+		$q.notify({
+			message: "Файл слишком большой (максимум 2MB)",
+			type: "negative",
+			position: "top"
+		});
+		return;
+	}
+
+	selectedIconFile.value = file;
+	iconPreviewUrl.value = URL.createObjectURL(file);
+};
+
 const tagSelectOptions = computed(() => filteredTags.value);
 
 function onPopupShow() {
@@ -395,6 +441,8 @@ function resetForm() {
 		hints_enabled: true
 	};
 	currentInputValue.value = "";
+	selectedIconFile.value = null;
+	iconPreviewUrl.value = null;
 }
 
 async function submitTraining() {
@@ -405,8 +453,15 @@ async function submitTraining() {
 			...dataTraining.value,
 			duration_minutes: dataTraining.value.duration_minutes ?? undefined
 		};
+		
+		let trainingUuid = null;
+		
 		if (props.mode === "create") {
-			await trainingApi.createTraining(payload);
+			const res = await trainingApi.createTraining(payload);
+			trainingUuid = res?.data?.data?.uuid || null;
+			if (!trainingUuid) {
+				throw new Error("Не удалось получить UUID созданного тренинга");
+			}
 			$q.notify({
 				color: "positive",
 				message: "Тренинг создан",
@@ -414,7 +469,8 @@ async function submitTraining() {
 				icon: "check_circle"
 			});
 		} else {
-			await trainingApi.updateTraining(props.editData.uuid, payload);
+			trainingUuid = props.editData.uuid;
+			await trainingApi.updateTraining(trainingUuid, payload);
 			$q.notify({
 				color: "positive",
 				message: "Тренинг обновлён",
@@ -422,6 +478,26 @@ async function submitTraining() {
 				icon: "check_circle"
 			});
 		}
+		
+		// Если выбрана новая иконка, загружаем её
+		if (selectedIconFile.value && trainingUuid) {
+			try {
+				const formData = new FormData();
+				formData.append("file", selectedIconFile.value);
+				await trainingApi.uploadIcon(trainingUuid, formData);
+				
+				// Добавим задержку перед обновлением списка, чтобы S3 точно успел отдать картинку
+				await new Promise(resolve => setTimeout(resolve, 500));
+			} catch (iconError) {
+				console.error("Ошибка загрузки иконки:", iconError);
+				$q.notify({
+					color: "warning",
+					message: "Тренинг сохранен, но не удалось загрузить иконку",
+					position: "top"
+				});
+			}
+		}
+		
 		trainingEvents.created.trigger();
 		showModal.value = false;
 		resetForm();
@@ -451,6 +527,9 @@ watch(showModal, async (val) => {
 				skip_steps: props.editData.skip_steps || false,
 				hints_enabled: props.editData.hints_enabled !== false,
 			};
+			if (props.editData.icon) {
+				iconPreviewUrl.value = props.editData.icon;
+			}
 		}
 		metaLoading.value = true;
 		try {
@@ -478,9 +557,7 @@ watch(showModal, async (val) => {
 .training-modal-card {
 	width: 860px;
 	max-width: 95vw;
-	border-radius: 18px;
 	overflow: visible;
-	box-shadow: 0 24px 56px rgba(0, 0, 0, 0.14);
 	animation: scaleIn 0.3s var(--anim-ease-spring) forwards;
 }
 

@@ -23,6 +23,7 @@ router = APIRouter(
     tags=["Auth"],
 )
 
+
 def _sanitize_oauth_next(raw: Optional[str]) -> str:
     default = "/personal"
     if not raw or not isinstance(raw, str):
@@ -34,12 +35,22 @@ def _sanitize_oauth_next(raw: Optional[str]) -> str:
         return default
     return s[:512]
 
+
 @router.get("/yandex/start", name="Старт OAuth Яндекс ID")
 async def yandex_oauth_start(next: str = "/personal") -> RedirectResponse:
-    if not configs.YANDEX_CLIENT_ID or not configs.YANDEX_REDIRECT_URI:
+    missing = []
+    if not (configs.YANDEX_CLIENT_ID or "").strip():
+        missing.append("YANDEX_CLIENT_ID")
+    if not (configs.YANDEX_REDIRECT_URI or "").strip():
+        missing.append("YANDEX_REDIRECT_URI")
+    if missing:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Яндекс OAuth не настроен (YANDEX_CLIENT_ID, YANDEX_REDIRECT_URI).",
+            detail=(
+                "Яндекс OAuth не настроен: задайте в backend/.env (или env_file Docker): "
+                + ", ".join(missing)
+                + ". Значения в config.py по умолчанию не подставляют client_id."
+            ),
         )
     n = _sanitize_oauth_next(next)
     state = create_access_token(
@@ -52,6 +63,7 @@ async def yandex_oauth_start(next: str = "/personal") -> RedirectResponse:
     )
     url = build_yandex_authorize_url(state=state)
     return RedirectResponse(url, status_code=302)
+
 
 @router.get("/yandex/callback", name="OAuth Яндекс ID: callback")
 async def yandex_oauth_callback(
@@ -99,6 +111,7 @@ async def yandex_oauth_callback(
         status_code=302,
     )
 
+
 @router.get("/yandex/config", name="Конфиг Яндекс OAuth")
 async def yandex_oauth_config() -> dict:
     fe = configs.FRONTEND_PUBLIC_URL.rstrip("/")
@@ -107,8 +120,10 @@ async def yandex_oauth_config() -> dict:
         "redirect_uri": f"{fe}/login/yandex/callback",
     }
 
+
 class YandexTokenRequest(BaseModel):
     access_token: str
+
 
 @router.post("/yandex/token", name="Авторизация по токену Яндекса")
 async def yandex_oauth_token(
@@ -129,6 +144,7 @@ async def yandex_oauth_token(
     except Exception as e:
         logger.exception("Yandex OAuth token error")
         raise HTTPException(status_code=400, detail="Invalid Yandex token")
+
 
 @router.post("/register", name="регистрация пользователя")
 async def register_user(
@@ -185,5 +201,3 @@ async def get_user(
             detail="Не удалось загрузить пользователя",
         )
     return current_user
-
-

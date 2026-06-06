@@ -116,6 +116,34 @@ async def delete_training(
         raise HTTPException(status_code=404, detail="Тренинг не найден")
 
 
+@router.post("/upload-icon/{training_uuid}", name="Загрузка иконки тренинга")
+async def upload_icon_for_training(
+    training_uuid: UUID4,
+    file: UploadFile = File(...),
+    s3_service: S3Service = Depends(get_s3_service),
+    trainings_service: TrainingsService = Depends(get_trainings_service),
+    user_service: UserService = Depends(get_user_service),
+    token: str = Depends(oauth2_scheme),
+):
+    user = await user_service.get_current_user(token)
+    await trainings_service._require_training_owner(training_uuid, user.id)
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Имя файла обязательно")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+
+    object_name = s3_service.generate_unique_filename(file.filename)
+    file_url = await s3_service.upload_file(content, object_name, training_uuid)
+
+    # Обновляем тренинг
+    await trainings_service.patch_training(training_uuid, TrainingUpdate(icon=file_url))
+
+    return {"success": True, "icon_url": file_url}
+
+
 @router.post("/upload-photos/{training_uuid}", name="Загрузка фото")
 async def upload_photos_by_training(
     training_uuid: UUID4,
@@ -157,32 +185,30 @@ async def upload_photos_by_training(
     }
 
 
-@router.post("/upload-video/{training_uuid}", name="Загрузка видео (AI-анализ)")
-async def upload_video_for_training(
+@router.post(
+    "/upload-video/{training_uuid}",
+    name="Загрузка видео (AI-анализ, фоновая очередь)",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def upload_video_for_training_async(
     training_uuid: UUID4,
     file: UploadFile = File(..., description="Видеофайл"),
-    video_ai_service: VideoAIService = Depends(get_video_ai_service),
     s3_service: S3Service = Depends(get_s3_service),
     trainings_service: TrainingsService = Depends(get_trainings_service),
+    user_service: UserService = Depends(get_user_service),
     token: str = Depends(oauth2_scheme),
 ):
-    """
-    Принимает видео, отправляет в AI-модель для анализа действий.
-    AI определяет таймкоды, описания шагов и координаты областей.
-    По каждому таймкоду извлекается кадр, загружается в S3 и создаётся шаг.
-    """
-    created_steps = await trainings_service.add_steps_from_video(
+    user = await user_service.get_current_user(token)
+    result = await trainings_service.start_async_video_processing(
         training_uuid=training_uuid,
+        user_id=user.id,
         video_file=file,
-        video_ai_service=video_ai_service,
         s3_service=s3_service,
     )
-
-    return {
-        "success": True,
-        "message": f"Видео обработано AI. Создано {len(created_steps)} шагов.",
-        "created_steps": created_steps,
-    }
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content=result.model_dump(mode="json"),
+    )
 
 
 # === ЭНДПОИНТЫ ДЛЯ УПРАВЛЕНИЯ ШАГАМИ ===
@@ -457,9 +483,11 @@ async def ai_rewrite_task(
     token: str = Depends(oauth2_scheme),
 ):
     try:
+
         def stream_generator():
             for chunk in video_ai_service.stream_rewrite_task_text(request.text):
                 yield chunk
+
         return StreamingResponse(stream_generator(), media_type="text/plain")
     except Exception as e:
         raise HTTPException(
@@ -502,7 +530,9 @@ async def generate_step_tts(
 
         # Загружаем в S3
         object_name = f"audio/{uuid_lib.uuid4()}.wav"
-        audio_url = await s3_service.upload_file(audio_bytes, object_name, training_uuid)
+        audio_url = await s3_service.upload_file(
+            audio_bytes, object_name, training_uuid
+        )
         logger.info(f"[TTS] Аудио сохранено в S3: {audio_url}")
 
         # Сохраняем audio_url в БД
@@ -516,7 +546,9 @@ async def generate_step_tts(
         raise
     except Exception as e:
         logger.error(f"[TTS] Ошибка: {e}\n{traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Ошибка генерации озвучки: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Ошибка генерации озвучки: {str(e)}"
+        )
 
 
 @router.post("/upload-pdf/{training_uuid}", name="Загрузка PDF-инструкции (AI-анализ)")

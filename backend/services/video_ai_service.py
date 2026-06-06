@@ -129,7 +129,14 @@ def _normalize_interaction_type(raw: str) -> str:
     }
     if r in aliases:
         return aliases[r]
-    allowed = {"left_click", "right_click", "double_click", "hover", "text_input", "key_chord"}
+    allowed = {
+        "left_click",
+        "right_click",
+        "double_click",
+        "hover",
+        "text_input",
+        "key_chord",
+    }
     return r if r in allowed else "left_click"
 
 
@@ -159,10 +166,15 @@ class VideoCompressor:
     def _estimate_b64_size(file_path: str) -> int:
         return (os.path.getsize(file_path) * 4) // 3
 
-    def _encode_video(self, video_path: str, target_fps: int, max_side: int, jpeg_quality: int) -> str:
+    def _encode_video(
+        self, video_path: str, target_fps: int, max_side: int, jpeg_quality: int
+    ) -> str:
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Не удалось открыть видеофайл для перекодирования")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Не удалось открыть видеофайл для перекодирования",
+            )
         src_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         orig_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         orig_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -173,10 +185,15 @@ class VideoCompressor:
         tmp_out = tempfile.NamedTemporaryFile(delete=False, suffix=".avi")
         tmp_out.close()
         fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-        writer = cv2.VideoWriter(tmp_out.name, fourcc, float(target_fps), (new_width, new_height))
+        writer = cv2.VideoWriter(
+            tmp_out.name, fourcc, float(target_fps), (new_width, new_height)
+        )
         if not writer.isOpened():
             cap.release()
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Не удалось создать VideoWriter для сжатия")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Не удалось создать VideoWriter для сжатия",
+            )
         frame_idx = 0
         written = 0
         while True:
@@ -185,8 +202,12 @@ class VideoCompressor:
                 break
             if frame_idx % frame_step == 0:
                 if scale < 1.0:
-                    frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
-                ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality])
+                    frame = cv2.resize(
+                        frame, (new_width, new_height), interpolation=cv2.INTER_AREA
+                    )
+                ok, buf = cv2.imencode(
+                    ".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality]
+                )
                 if ok:
                     frame = cv2.imdecode(buf, cv2.IMREAD_COLOR)
                     writer.write(frame)
@@ -194,13 +215,18 @@ class VideoCompressor:
             frame_idx += 1
         cap.release()
         writer.release()
-        logger.info(f"Перекодировано: {written} кадров @ {target_fps}fps, {new_width}x{new_height}, качество={jpeg_quality}")
+        logger.info(
+            f"Перекодировано: {written} кадров @ {target_fps}fps, {new_width}x{new_height}, качество={jpeg_quality}"
+        )
         return tmp_out.name
 
     def compress_video(self, video_path: str) -> Tuple[str, float, float]:
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Не удалось открыть видеофайл для сжатия")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Не удалось открыть видеофайл для сжатия",
+            )
         original_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         duration = total_frames / original_fps if original_fps > 0 else 0
@@ -210,30 +236,56 @@ class VideoCompressor:
         crf = 23
         out_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
         cmd = [
-            "ffmpeg", "-y", "-i", video_path,
-            "-c:v", "libx264", "-preset", "fast", "-crf", str(crf),
-            "-r", str(target_fps), "-vf", f"scale={max_side}:-2",
-            "-an", out_path
+            "ffmpeg",
+            "-y",
+            "-i",
+            video_path,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            str(crf),
+            "-r",
+            str(target_fps),
+            "-vf",
+            f"scale={max_side}:-2",
+            "-an",
+            out_path,
         ]
         try:
-            logger.info(f"Compressing video: {duration:.1f}s @ {target_fps}fps, max side {max_side}px")
+            logger.info(
+                f"Compressing video: {duration:.1f}s @ {target_fps}fps, max side {max_side}px"
+            )
             subprocess.run(cmd, capture_output=True, timeout=120, check=True)
             out_size = os.path.getsize(out_path)
             out_b64_size = (out_size * 4) // 3
-            logger.info(f"Compressed: {out_size / 1024 / 1024:.2f} MB -> ~{out_b64_size / 1024 / 1024:.2f} MB base64")
+            logger.info(
+                f"Compressed: {out_size / 1024 / 1024:.2f} MB -> ~{out_b64_size / 1024 / 1024:.2f} MB base64"
+            )
             return out_path, original_fps, float(target_fps)
         except subprocess.CalledProcessError as e:
             logger.error(f"FFmpeg error: {e}")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Video compression failed: {e}") from e
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Video compression failed: {e}",
+            ) from e
 
     def read_as_base64(self, video_path: str) -> Tuple[str, str]:
         ext = os.path.splitext(video_path)[1].lower()
-        mime_map = {".mp4": "video/mp4", ".avi": "video/avi", ".mov": "video/quicktime", ".webm": "video/webm"}
+        mime_map = {
+            ".mp4": "video/mp4",
+            ".avi": "video/avi",
+            ".mov": "video/quicktime",
+            ".webm": "video/webm",
+        }
         mime = mime_map.get(ext, "video/mp4")
         with open(video_path, "rb") as f:
             data = f.read()
         b64 = base64.b64encode(data).decode("utf-8")
-        logger.info(f"Base64 size for API: {len(b64) // 1024}KB (limit {self.MAX_BASE64_BYTES // 1024}KB)")
+        logger.info(
+            f"Base64 size for API: {len(b64) // 1024}KB (limit {self.MAX_BASE64_BYTES // 1024}KB)"
+        )
         return mime, b64
 
 
@@ -267,7 +319,9 @@ class VideoAIService:
         # Совместимость с воркером: путь уже лежит в S3 temp.
         return await self._analyze_video_path(original_path, cleanup_original=False)
 
-    async def _analyze_video_path(self, original_path: str, cleanup_original: bool) -> List[VideoStepData]:
+    async def _analyze_video_path(
+        self, original_path: str, cleanup_original: bool
+    ) -> List[VideoStepData]:
         start_timestamp = time.time()
         compressed_path: Optional[str] = None
         try:
@@ -276,8 +330,12 @@ class VideoAIService:
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             duration = total_frames / fps if fps > 0 else 0
             cap.release()
-            logger.info(f"Analyzing video: 0.0s - {duration:.1f}s (duration {duration:.1f}s)")
-            compressed_path, source_file_fps, compressed_fps = self.compressor.compress_video(original_path)
+            logger.info(
+                f"Analyzing video: 0.0s - {duration:.1f}s (duration {duration:.1f}s)"
+            )
+            compressed_path, source_file_fps, compressed_fps = (
+                self.compressor.compress_video(original_path)
+            )
             analysis_frame_size: Optional[Tuple[int, int]] = None
             cap_compressed = cv2.VideoCapture(compressed_path)
             if cap_compressed.isOpened():
@@ -287,22 +345,37 @@ class VideoAIService:
                     analysis_frame_size = (aw, ah)
             cap_compressed.release()
             prompt_with_time = ANALYSIS_PROMPT.format(start_time=0, end_time=duration)
-            logger.info(f"Sending to AI: fps {source_file_fps:.1f}→{compressed_fps:.1f}")
+            logger.info(
+                f"Sending to AI: fps {source_file_fps:.1f}→{compressed_fps:.1f}"
+            )
             ai_response = self._call_ai_model(compressed_path, prompt=prompt_with_time)
             steps_payload = self._parse_ai_response(ai_response)
             if not steps_payload:
-                logger.warning("Primary AI response has no valid steps, trying fallback")
-                ai_response = self._call_ai_model(compressed_path, prompt=FALLBACK_ANALYSIS_PROMPT)
+                logger.warning(
+                    "Primary AI response has no valid steps, trying fallback"
+                )
+                ai_response = self._call_ai_model(
+                    compressed_path, prompt=FALLBACK_ANALYSIS_PROMPT
+                )
                 steps_payload = self._parse_ai_response(ai_response)
                 if not steps_payload:
                     logger.warning("Fallback failed, trying repair prompt")
-                    ai_response = self._call_ai_model(compressed_path, prompt=REPAIR_JSON_PROMPT)
+                    ai_response = self._call_ai_model(
+                        compressed_path, prompt=REPAIR_JSON_PROMPT
+                    )
                     steps_payload = self._parse_ai_response(ai_response)
                     if not steps_payload:
-                        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="AI did not return valid steps. Check logs.")
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="AI did not return valid steps. Check logs.",
+                        )
             # Критично для точности: извлекаем кадры из того же (сжатого) файла,
             # который анализировала модель. Тогда bbox и скрин в одной системе координат.
-            frame_source_path = compressed_path if compressed_path and os.path.exists(compressed_path) else original_path
+            frame_source_path = (
+                compressed_path
+                if compressed_path and os.path.exists(compressed_path)
+                else original_path
+            )
             use_remap = frame_source_path == original_path
             logger.info(
                 f"Frame source for step screenshots: {'compressed' if frame_source_path == compressed_path else 'original'}"
@@ -313,7 +386,9 @@ class VideoAIService:
                 analysis_frame_size=analysis_frame_size if use_remap else None,
             )
             processing_time = time.time() - start_timestamp
-            logger.info(f"Analysis completed: {len(results)} steps in {processing_time:.1f}s")
+            logger.info(
+                f"Analysis completed: {len(results)} steps in {processing_time:.1f}s"
+            )
             return results
         finally:
             if compressed_path and os.path.exists(compressed_path):
@@ -327,12 +402,19 @@ class VideoAIService:
                 except OSError:
                     pass
 
-    def _call_ai_model(self, video_path: str, prompt: str, max_tokens: int = 8000) -> str:
+    def _call_ai_model(
+        self, video_path: str, prompt: str, max_tokens: int = 8000
+    ) -> str:
         mime, base64_video = self.compressor.read_as_base64(video_path)
         limit = self.compressor.MAX_BASE64_BYTES
         if len(base64_video) > limit:
-            logger.warning(f"Base64 ({len(base64_video) // 1024}KB) выше потолка ({limit // 1024}KB)")
-            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Video too large after compression. Please use shorter video.")
+            logger.warning(
+                f"Base64 ({len(base64_video) // 1024}KB) выше потолка ({limit // 1024}KB)"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Video too large after compression. Please use shorter video.",
+            )
         logger.info(f"Sending to AI: {len(base64_video) // 1024}KB, model={self.model}")
         try:
             completion = self.client.chat.completions.create(
@@ -341,7 +423,12 @@ class VideoAIService:
                     {
                         "role": "user",
                         "content": [
-                            {"type": "video_url", "video_url": {"url": f"data:{mime};base64,{base64_video}"}},
+                            {
+                                "type": "video_url",
+                                "video_url": {
+                                    "url": f"data:{mime};base64,{base64_video}"
+                                },
+                            },
                             {"type": "text", "text": prompt},
                         ],
                     }
@@ -351,23 +438,38 @@ class VideoAIService:
             )
             if hasattr(completion, "usage") and completion.usage:
                 logger.info("💰 TOKEN USAGE 💰")
-                logger.info(f"  Prompt tokens (входящие): {completion.usage.prompt_tokens}")
-                logger.info(f"  Completion tokens (исходящие): {completion.usage.completion_tokens}")
+                logger.info(
+                    f"  Prompt tokens (входящие): {completion.usage.prompt_tokens}"
+                )
+                logger.info(
+                    f"  Completion tokens (исходящие): {completion.usage.completion_tokens}"
+                )
                 logger.info(f"  Total tokens: {completion.usage.total_tokens}")
             content = completion.choices[0].message.content
             if content is None:
-                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="AI returned empty response")
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="AI returned empty response",
+                )
             return content
         except Exception as e:
             logger.exception(f"AI call failed (model={self.model})")
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"AI service error: {str(e)}") from e
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"AI service error: {str(e)}",
+            ) from e
 
     @staticmethod
     def _strip_model_noise(text: str) -> str:
         if not text:
             return ""
         t = text.strip()
-        t = re.sub(r"<(?:redacted_)?thinking>[\s\S]*?</(?:redacted_)?thinking>", "", t, flags=re.IGNORECASE)
+        t = re.sub(
+            r"<(?:redacted_)?thinking>[\s\S]*?</(?:redacted_)?thinking>",
+            "",
+            t,
+            flags=re.IGNORECASE,
+        )
         return t.strip()
 
     def _parse_ai_response(self, raw_response: str) -> List[Dict[str, Any]]:
@@ -392,9 +494,13 @@ class VideoAIService:
             return []
         if isinstance(data.get("steps"), list):
             return self._validate_steps_list(data["steps"])
-        if isinstance(data.get("data"), dict) and isinstance(data["data"].get("steps"), list):
+        if isinstance(data.get("data"), dict) and isinstance(
+            data["data"].get("steps"), list
+        ):
             return self._validate_steps_list(data["data"]["steps"])
-        if isinstance(data.get("result"), dict) and isinstance(data["result"].get("steps"), list):
+        if isinstance(data.get("result"), dict) and isinstance(
+            data["result"].get("steps"), list
+        ):
             return self._validate_steps_list(data["result"]["steps"])
         if isinstance(data.get("actions"), list):
             return self._validate_steps_list(data["actions"])
@@ -475,7 +581,9 @@ class VideoAIService:
             timecode_after = ta
             timecode = timecode_before
             title = str(item.get("title", "")).strip()
-            instruction_md = self._normalize_instruction_md(item.get("instruction_md", item.get("instruction", "")))
+            instruction_md = self._normalize_instruction_md(
+                item.get("instruction_md", item.get("instruction", ""))
+            )
 
             action_type = item.get("action_type")
             bbox = item.get("bbox")
@@ -495,10 +603,14 @@ class VideoAIService:
             else:
                 inter = item.get("interaction")
                 if isinstance(inter, dict):
-                    itype = _normalize_interaction_type(str(inter.get("type", "left_click")))
+                    itype = _normalize_interaction_type(
+                        str(inter.get("type", "left_click"))
+                    )
                     bbox = self._coerce_bbox(inter.get("bbox")) or bbox
                     expected_text = inter.get("expected_text") or expected_text
-                    key_chord = _normalize_key_chord(inter.get("key_chord")) or key_chord
+                    key_chord = (
+                        _normalize_key_chord(inter.get("key_chord")) or key_chord
+                    )
                 else:
                     itype = "left_click"
 
@@ -518,7 +630,8 @@ class VideoAIService:
                         "timecode_after": timecode_after or None,
                         "seconds": seconds_value,
                         "title": title or "Тренинг завершен",
-                        "instruction_md": instruction_md or "Все действия выполнены. Тренинг завершен",
+                        "instruction_md": instruction_md
+                        or "Все действия выполнены. Тренинг завершен",
                         "interaction_type": "left_click",
                         "bbox": [0, 0, 0, 0],
                         "expected_text": None,
@@ -528,7 +641,9 @@ class VideoAIService:
                 continue
 
             if not timecode_before or not isinstance(bbox, list) or len(bbox) != 4:
-                logger.warning(f"Пропущен шаг: некорректный timecode_before/timecode или bbox: {timecode_before}, {bbox}")
+                logger.warning(
+                    f"Пропущен шаг: некорректный timecode_before/timecode или bbox: {timecode_before}, {bbox}"
+                )
                 continue
             if not instruction_md and not title:
                 logger.warning(f"Пропущен шаг {timecode_before}: нет текста задания")
@@ -545,26 +660,43 @@ class VideoAIService:
                 if width <= 0 or height <= 0:
                     continue
                 if width < 0.005 or height < 0.005:
-                    logger.warning(f"Шаг {timecode_before}: bbox очень маленький ({width:.3f}x{height:.3f}), пропуск")
+                    logger.warning(
+                        f"Шаг {timecode_before}: bbox очень маленький ({width:.3f}x{height:.3f}), пропуск"
+                    )
                     continue
                 if width > 0.95 or height > 0.95:
-                    logger.warning(f"Шаг {timecode_before}: bbox слишком большой ({width:.3f}x{height:.3f}), пропуск")
+                    logger.warning(
+                        f"Шаг {timecode_before}: bbox слишком большой ({width:.3f}x{height:.3f}), пропуск"
+                    )
                     continue
             else:
                 width = bbox[2] - bbox[0]
                 height = bbox[3] - bbox[1]
                 if width < 2.0 or height < 2.0:
-                    logger.warning(f"Шаг {timecode_before}: bbox в пикселях слишком мал ({width:.0f}x{height:.0f}), пропуск")
+                    logger.warning(
+                        f"Шаг {timecode_before}: bbox в пикселях слишком мал ({width:.0f}x{height:.0f}), пропуск"
+                    )
                     continue
                 if width > 8192 or height > 8192:
-                    logger.warning(f"Шаг {timecode_before}: bbox в пикселях нереалистичен ({width:.0f}x{height:.0f}), пропуск")
+                    logger.warning(
+                        f"Шаг {timecode_before}: bbox в пикселях нереалистичен ({width:.0f}x{height:.0f}), пропуск"
+                    )
                     continue
 
             if itype == "text_input":
                 if expected_text is not None:
-                    expected_text = str(expected_text).replace("\r\n", "\n").replace("\r", "\n").replace("\\n", "\n").strip() or None
+                    expected_text = (
+                        str(expected_text)
+                        .replace("\r\n", "\n")
+                        .replace("\r", "\n")
+                        .replace("\\n", "\n")
+                        .strip()
+                        or None
+                    )
                 if not expected_text:
-                    logger.warning(f"Пропущен шаг {timecode_before}: text_input без expected_text")
+                    logger.warning(
+                        f"Пропущен шаг {timecode_before}: text_input без expected_text"
+                    )
                     continue
             else:
                 expected_text = None
@@ -581,7 +713,9 @@ class VideoAIService:
                     "timecode_after": timecode_after or None,
                     "seconds": seconds_value,
                     "title": title or f"Шаг {len(validated) + 1}",
-                    "instruction_md": instruction_md or title or "Выполните действие на экране.",
+                    "instruction_md": instruction_md
+                    or title
+                    or "Выполните действие на экране.",
                     "interaction_type": itype,
                     "bbox": bbox,
                     "expected_text": expected_text,
@@ -654,7 +788,9 @@ class VideoAIService:
         except (ValueError, TypeError):
             return 0.0
 
-    def _extract_frame_at_time_precise(self, video_path: str, seconds: float) -> Optional[bytes]:
+    def _extract_frame_at_time_precise(
+        self, video_path: str, seconds: float
+    ) -> Optional[bytes]:
         """Извлекает кадр максимально точно: сначала по индексу кадра, затем fallback по msec."""
         if seconds < 0:
             return None
@@ -751,10 +887,14 @@ class VideoAIService:
             )
             after_bytes: Optional[bytes] = None
             if tc_after:
-                after_seconds = self._timecode_to_seconds_precise(tc_after) + after_lag_sec
+                after_seconds = (
+                    self._timecode_to_seconds_precise(tc_after) + after_lag_sec
+                )
                 if after_seconds <= before_seconds:
                     after_seconds = before_seconds + 0.15
-                after_bytes = self._extract_frame_at_time_precise(video_path, after_seconds)
+                after_bytes = self._extract_frame_at_time_precise(
+                    video_path, after_seconds
+                )
             results.append(
                 VideoStepData(
                     timecode=tc_before,
@@ -791,7 +931,7 @@ class VideoAIService:
         result = (completion.choices[0].message.content or "").strip()
         for prefix in ("```markdown", "```md", "```"):
             if result.startswith(prefix):
-                result = result[len(prefix):]
+                result = result[len(prefix) :]
                 break
         if result.endswith("```"):
             result = result[:-3]

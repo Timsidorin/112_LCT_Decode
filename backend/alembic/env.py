@@ -10,6 +10,7 @@ from alembic import context
 from core.database import DATABASE_URL, Base
 from models.courses import Course, course_trainings
 from models.trainings import Levels, Tags, Training, TrainingStep, TypesAction
+from models.tasks import ProcessingTask
 from models.users import User
 
 # this is the Alembic Config object

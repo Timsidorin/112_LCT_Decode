@@ -1,11 +1,14 @@
 from contextlib import asynccontextmanager
+from concurrent.futures import ThreadPoolExecutor
 from typing import AsyncGenerator
+
+import asyncio
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import HTMLResponse
 
-from core.database import get_async_session
+from core.database import engine, get_async_session
 from core.logging_config import logger
 from repositories.users_repository import UserRepository
 from scripts.create_initial_actions import create_initial_actions
@@ -23,15 +26,21 @@ async def create_initial_user():
 
 
 def create_base_app(configs):
+    io_executor = ThreadPoolExecutor(max_workers=32, thread_name_prefix="api-io")
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[dict, None]:
         """Управление жизненным циклом приложения."""
+        loop = asyncio.get_running_loop()
+        loop.set_default_executor(io_executor)
         logger.info("Инициализация приложения...")
         await create_initial_user()
         await create_initial_actions()
         await create_initial_tags()
         await create_initial_levels()
         yield
+        io_executor.shutdown(wait=False, cancel_futures=True)
+        await engine.dispose()
         logger.info("Завершение работы приложения...")
 
     app = FastAPI(

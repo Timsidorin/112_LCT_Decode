@@ -10,6 +10,7 @@ import { onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useQuasar } from "quasar";
 import { useUserStore } from "@store/userData.js";
+import { ensureNotificationsConnected } from "@store/notifications.js";
 import { authApi } from "@api";
 
 const route = useRoute();
@@ -39,6 +40,7 @@ onMounted(async () => {
 			position: "bottom-right",
 			timeout: 2000,
 		});
+		ensureNotificationsConnected();
 		const redirect = route.query.redirect || "/personal";
 		await router.replace(redirect);
 		return;

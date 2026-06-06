@@ -1,5 +1,7 @@
 <template>
 	<div class="edit-page">
+		<BackgroundProcessingIndicator class="edit-page__processing-indicator" />
+
 		<q-btn
 			flat
 			no-caps
@@ -107,7 +109,8 @@ import { BaseLoader } from "@components/base_components/index.js";
 import ToolBar from "@components/features/edit_page/tool_bar/ui/ToolBar.vue";
 import ScreenshotCropDialog from "@components/features/edit_page/ScreenshotCropDialog.vue";
 import { useQuasar } from "quasar";
-// import { useNotificationsStore } from "@store/notifications.js";
+import { useNotificationsStore } from "@store/notifications.js";
+import BackgroundProcessingIndicator from "@components/features/personal_page/header/BackgroundProcessingIndicator.vue";
 
 const trainingApi = new TrainingApi();
 const route = useRoute();
@@ -191,29 +194,23 @@ async function getTrainingData() {
 	}
 }
 
+function onTrainingTaskUpdate(event) {
+	const detail = event?.detail;
+	if (!detail?.training_uuid) return;
+	if (String(detail.training_uuid) !== String(route.params.uuid)) return;
+	if (detail.status === "completed") {
+		void getTrainingData();
+	}
+}
+
 onMounted(() => {
 	getTrainingData();
+	window.addEventListener("training-task-update", onTrainingTaskUpdate);
 });
 
-// --- WebSocket / фоновая обработка видео — отключено ---
-// function onTrainingTaskUpdate(event) {
-// 	const detail = event?.detail;
-// 	if (!detail?.training_uuid) return;
-// 	if (String(detail.training_uuid) !== String(route.params.uuid)) return;
-// 	if (detail.status === "completed") {
-// 		void getTrainingData();
-// 	}
-// }
-// onMounted(() => {
-// 	getTrainingData();
-// 	if (localStorage.getItem("tokenAuth")) {
-// 		useNotificationsStore().connect();
-// 	}
-// 	window.addEventListener("training-task-update", onTrainingTaskUpdate);
-// });
-// onUnmounted(() => {
-// 	window.removeEventListener("training-task-update", onTrainingTaskUpdate);
-// });
+onUnmounted(() => {
+	window.removeEventListener("training-task-update", onTrainingTaskUpdate);
+});
 </script>
 
 <style scoped>
@@ -225,6 +222,13 @@ onMounted(() => {
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
+}
+
+.edit-page__processing-indicator {
+	position: fixed;
+	top: 58px;
+	right: 12px;
+	z-index: 201;
 }
 
 .edit-page__home-btn {

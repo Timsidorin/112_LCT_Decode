@@ -19,9 +19,7 @@ class UserService:
     def __init__(self, repo: UserRepository):
         self.user_repo = repo
 
-    async def register(
-        self, user_data: UserRegister
-    ) -> bool:
+    async def register(self, user_data: UserRegister) -> bool:
         return await self.user_repo.add_user(user_data)
 
     async def authenticate(self, email: EmailStr, password: str):

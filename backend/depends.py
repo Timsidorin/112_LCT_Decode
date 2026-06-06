@@ -1,11 +1,10 @@
-# core/dependencies.py
 import boto3
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.config import Configs, configs
+from core.config import configs
 from core.database import get_async_session
 from models.users import User
 from repositories.actions_repository import ActionsRepository
@@ -20,6 +19,7 @@ from services.external_services.s3_service import S3Service
 from services.pdf_ai_service import PdfAiService
 from services.trainings_service import TrainingsService
 from services.user_service import UserService
+
 from services.video_ai_service import VideoAIService
 
 """
@@ -27,9 +27,6 @@ from services.video_ai_service import VideoAIService
 """
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
-
-
-# === Репозитории ===
 
 
 async def get_user_repository(
@@ -74,9 +71,6 @@ async def get_courses_repository(
     return CoursesRepository(session)
 
 
-# === Сервисы ===
-
-
 async def get_user_service(
     session: AsyncSession = Depends(get_async_session),
 ) -> UserService:
@@ -104,9 +98,6 @@ async def get_s3_service(
 ) -> S3Service:
     """Получение S3 сервиса"""
     return S3Service(session)
-
-
-# === Аутентификация ===
 
 
 async def get_current_user(

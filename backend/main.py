@@ -11,7 +11,9 @@ from routing import (
     course_router,
     levels_router,
     tags_router,
+    tasks_router,
     training_router,
+    ws_router,
 )
 
 setup_logging(level=configs.LOG_LEVEL)
@@ -24,8 +26,15 @@ app.include_router(course_router.router)
 app.include_router(tags_router.router)
 app.include_router(levels_router.router)
 app.include_router(actions_router.router)
+app.include_router(tasks_router.router)
+app.include_router(ws_router.router)
 
 if __name__ == "__main__":
     import uvicorn
-
-    uvicorn.run("main:app", host=configs.HOST, port=configs.PORT, reload=True)
+    uvicorn.run(
+        "main:app",
+        host=configs.HOST,
+        port=configs.PORT,
+        reload=False,
+        loop="asyncio",
+    )

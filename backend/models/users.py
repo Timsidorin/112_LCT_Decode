@@ -25,7 +25,17 @@ class User(Base):
         sa.DateTime, server_default=text("NOW()")
     )
     photo: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
-    yandex_id: Mapped[Optional[str]] = mapped_column(sa.String(64), nullable=True, index=True, unique=True)
+    yandex_id: Mapped[Optional[str]] = mapped_column(
+        sa.String(64), nullable=True, index=True, unique=True
+    )
     created_trainings: Mapped[List["Training"]] = relationship(
         "models.trainings.Training", back_populates="creator"
     )
+    processing_tasks: Mapped[List["ProcessingTask"]] = relationship(
+        "ProcessingTask", back_populates="user"
+    )
+
+
+# Гарантируем регистрацию ProcessingTask в mapper registry до инициализации связей.
+from .tasks import ProcessingTask  # noqa: E402,F401
+from .trainings import Training  # noqa: E402,F401

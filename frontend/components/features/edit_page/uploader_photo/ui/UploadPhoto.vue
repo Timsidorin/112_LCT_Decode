@@ -1,8 +1,8 @@
 <template>
 	<div class="upload-container column items-center relative-position">
-		<video-processing-loader v-if="loading && uploadMode === 'video'" />
-		<q-inner-loading :showing="loading && uploadMode === 'photos'">
+		<q-inner-loading :showing="loading">
 			<q-spinner-gears size="48px" color="primary" />
+			<div class="q-mt-md text-primary">{{ uploadMode === 'video' ? 'Загрузка видео...' : 'Создание шагов...' }}</div>
 		</q-inner-loading>
 
 		<div class="upload-card column items-center">
@@ -288,14 +288,14 @@
 import { ref, watch, onMounted, onUnmounted } from "vue";
 import useDnd from "@composables/useDnd.js";
 import { MetaTrainingApi, TrainingApi } from "@api";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useQuasar } from "quasar";
 import { useTrainingData } from "@store/editTraining.js";
+import { ensureNotificationsConnected } from "@store/notifications.js";
 import {
 	FormUploadPhoto,
 	PhotoList
 } from "@components/features/edit_page/uploader_photo";
-import VideoProcessingLoader from "@components/features/edit_page/VideoProcessingLoader.vue";
 
 const metaApi = new MetaTrainingApi();
 const trainingApi = new TrainingApi();
@@ -303,6 +303,7 @@ const $q = useQuasar();
 const store = useTrainingData();
 const [images, addImage] = useDnd();
 const route = useRoute();
+const router = useRouter();
 const loading = ref(false);
 const uploadMode = ref("photos");
 const videoFile = ref(null);
@@ -532,32 +533,33 @@ const uploadVideo = async () => {
 	try {
 		const formData = new FormData();
 		formData.append("file", videoFile.value);
-		await metaApi.uploadVideo(route.params.uuid, formData);
+		const { data } = await metaApi.uploadVideo(route.params.uuid, formData);
 
-		const { data } = await trainingApi.getTrainingByUuid(route.params.uuid);
-		store.setTrainingData(data);
+		ensureNotificationsConnected().registerTask({
+			...data,
+			original_filename: videoFile.value.name,
+			message: "Видео принято — создаём шаги тренинга",
+		});
+		void ensureNotificationsConnected().prepareSystemNotifications();
 
 		clearVideo();
 
 		$q.notify({
-			message: "Шаги из видео успешно созданы!",
-			caption:
-				"AI распознал действия автоматически. Вы можете отредактировать описания и уточнить области действий.",
-			type: "positive",
-			position: "bottom-right",
-			icon: "smart_display",
-			timeout: 5000,
-			actions: [
-				{
-					label: "Понятно",
-					color: "white",
-					handler: () => {},
-				},
-			],
+			message: "Видео загружено и отправлено на обработку",
+			caption: "Разрешите уведомления Windows — сообщим, когда тренинг будет готов, даже если браузер свёрнут.",
+			type: "info",
+			position: "top-right",
+			icon: "hourglass_top",
+			timeout: 6000,
+			color: "primary",
+			classes: "beautiful-notify",
 		});
-	} catch {
+
+		router.push("/personal/training");
+	} catch (error) {
+		console.error(error);
 		$q.notify({
-			message: "Ошибка обработки видео",
+			message: "Ошибка загрузки видео",
 			type: "negative",
 			position: "top",
 		});
@@ -565,14 +567,6 @@ const uploadVideo = async () => {
 		loading.value = false;
 	}
 };
-
-// --- Фоновая очередь: без ожидания на экране, уведомления по WebSocket — отключено ---
-// const uploadVideo = async () => {
-// 	...
-// 	await metaApi.uploadVideo(...);
-// 	clearVideo();
-// 	$q.notify({ message: "Видео отправлено на обработку", ... });
-// };
 
 const uploadPdf = async () => {
 	if (!pdfFile.value) return;

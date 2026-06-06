@@ -27,6 +27,7 @@
 						</div>
 					</router-link>
 					<q-space />
+					<BackgroundProcessingIndicator />
 					<div
 						v-if="$q.screen.gt.sm"
 						class="header-divider"
@@ -74,8 +75,10 @@
 		<q-page-container class="page-container">
 			<div class="page-content-slot">
 				<router-view v-slot="{ Component, route }">
-					<transition name="content-in" appear>
-						<component :is="Component" :key="route.path" class="page-content-view" />
+					<transition name="content-in" mode="out-in" appear>
+						<div :key="route.path" class="page-content-view">
+							<component :is="Component" />
+						</div>
 					</transition>
 				</router-view>
 			</div>
@@ -86,24 +89,18 @@
 <script>
 import { ref } from "vue";
 import UserCard from "@components/features/personal_page/header/UserCard.vue";
+import BackgroundProcessingIndicator from "@components/features/personal_page/header/BackgroundProcessingIndicator.vue";
 import { useUserStore } from "@store/userData.js";
-// import { useNotificationsStore } from "@store/notifications.js";
 
 export default {
 	name: "BaseLayout",
-	components: { UserCard },
+	components: { UserCard, BackgroundProcessingIndicator },
 	async mounted() {
 		const token = localStorage.getItem("tokenAuth");
 		if (token && !useUserStore().isLoaded) {
 			await useUserStore().fetchUser();
 		}
-		// if (token) {
-		// 	useNotificationsStore().connect();
-		// }
 	},
-	// beforeUnmount() {
-	// 	useNotificationsStore().disconnect();
-	// },
 	setup() {
 		const drawerLeft = ref(false);
 		return {
@@ -368,13 +365,7 @@ export default {
 }
 
 .content-in-leave-active {
-	position: absolute;
-	top: 0;
-	left: 0;
-	right: 0;
-	z-index: 0;
-	pointer-events: none;
-	transition: opacity 0.22s var(--anim-ease-in-out, ease-in-out);
+	transition: opacity 0.18s var(--anim-ease-in-out, ease-in-out);
 }
 
 .content-in-leave-to {

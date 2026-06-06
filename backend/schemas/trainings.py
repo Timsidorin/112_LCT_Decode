@@ -76,6 +76,7 @@ class TrainingBase(BaseModel):
     hints_enabled: Optional[bool] = Field(
         default=True, description="Разрешены ли подсказки в прохождении"
     )
+    icon: Optional[str] = Field(default=None, description="URL иконки тренинга")
 
     @field_validator("duration_minutes")
     @classmethod
@@ -100,6 +101,7 @@ class TrainingUpdate(BaseModel):
     publish: Optional[bool] = Field(None, description="Опубликован ли тренинг")
     skip_steps: Optional[bool] = None
     hints_enabled: Optional[bool] = None
+    icon: Optional[str] = None
     tag_ids: Optional[List[int]] = None
 
     class Config:
@@ -121,6 +123,7 @@ class TrainingListResponse(BaseModel):
     publish: bool = False
     skip_steps: Optional[bool] = None
     hints_enabled: Optional[bool] = None
+    icon: Optional[str] = None
     level: Optional[LevelResponse] = None
     tags: List[TagResponse] = Field(default_factory=list)
     public_link: Optional[str] = None
@@ -146,6 +149,7 @@ class TrainingResponse(BaseModel):
     publish: bool = False
     skip_steps: Optional[bool] = None
     hints_enabled: Optional[bool] = None
+    icon: Optional[str] = None
     level: Optional[LevelResponse] = None
     tags: List[TagResponse] = Field(default_factory=list)
     steps: List[TrainingStepResponse] = Field(default_factory=list)

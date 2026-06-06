@@ -127,7 +127,6 @@ onBeforeUnmount(() => {
 .watch-key-modal {
 	min-width: 340px;
 	max-width: 90vw;
-	border-radius: 16px;
 }
 
 .watch-key-icon {

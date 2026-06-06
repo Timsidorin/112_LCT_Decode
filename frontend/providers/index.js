@@ -3,6 +3,7 @@ import { TrainingApi } from "@api/api/TrainingApi.js";
 import { TrainingStepApi, trainingStepApi } from "@api/api/TrainingStepApi.js";
 import { AuthApi, authApi } from "@api/api/AuthApi.js";
 import { CourseApi, courseApi } from "@api/api/CourseApi.js";
+import { TasksApi, tasksApi } from "@api/api/TasksApi.js";
 
 export {
 	MetaTrainingApi,
@@ -13,4 +14,6 @@ export {
 	authApi,
 	CourseApi,
 	courseApi,
+	TasksApi,
+	tasksApi,
 };

@@ -1,9 +1,9 @@
 <template>
 	<q-dialog v-model="value" persistent>
 		<q-card class="modal-create-step relative-position">
-			<video-processing-loader v-if="loading && uploadMode === 'video'" />
-			<q-inner-loading :showing="loading && uploadMode === 'photos'">
+			<q-inner-loading :showing="loading">
 				<q-spinner-gears size="48px" color="primary" />
+				<div class="q-mt-md text-primary">{{ uploadMode === 'video' ? 'Загрузка видео...' : 'Создание шагов...' }}</div>
 			</q-inner-loading>
 			<q-card-section class="row items-center q-pb-sm">
 				<div class="text-h6">Добавить шаги</div>
@@ -137,16 +137,17 @@
 </template>
 
 <script setup>
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { MetaTrainingApi, TrainingApi } from "@api";
 import { ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import { useTrainingData } from "@store/editTraining.js";
+import { ensureNotificationsConnected } from "@store/notifications.js";
 import { PhotoList } from "@components/features/edit_page/uploader_photo";
-import VideoProcessingLoader from "@components/features/edit_page/VideoProcessingLoader.vue";
 
 const value = defineModel();
 const route = useRoute();
+const router = useRouter();
 const $q = useQuasar();
 const store = useTrainingData();
 const metaApi = new MetaTrainingApi();
@@ -223,49 +224,55 @@ const addSteps = async () => {
 		if (uploadMode.value === "video" && videoFile.value) {
 			const formData = new FormData();
 			formData.append("file", videoFile.value);
-			await metaApi.uploadVideo(route.params.uuid, formData);
+			const { data } = await metaApi.uploadVideo(route.params.uuid, formData);
+
+			ensureNotificationsConnected().registerTask({
+				...data,
+				original_filename: videoFile.value.name,
+				message: "Видео принято — создаём шаги тренинга",
+			});
+			void ensureNotificationsConnected().prepareSystemNotifications();
+
+			images.value = [];
+			clearVideo();
+			value.value = false;
+
+			$q.notify({
+				message: "Видео загружено и отправлено на обработку",
+				caption: "Разрешите уведомления Windows — сообщим, когда тренинг будет готов, даже если браузер свёрнут.",
+				type: "info",
+				position: "top-right",
+				icon: "hourglass_top",
+				timeout: 6000,
+				color: "primary",
+				classes: "beautiful-notify",
+			});
+
+			router.push("/personal/training");
 		} else {
 			const formData = new FormData();
 			images.value.forEach((el) => {
 				formData.append("files", el.originalFile);
 			});
 			await metaApi.uploadImages(route.params.uuid, formData);
-		}
 
-		const { data } = await trainingApi.getTrainingByUuid(route.params.uuid);
-		store.setTrainingData(data);
+			const { data } = await trainingApi.getTrainingByUuid(route.params.uuid);
+			store.setTrainingData(data);
 
-		images.value = [];
-		clearVideo();
-		value.value = false;
+			images.value = [];
+			clearVideo();
+			value.value = false;
 
-		if (uploadMode.value === "video") {
-			$q.notify({
-				message: "Шаги из видео успешно добавлены!",
-				caption:
-					"AI распознал действия автоматически. Вы можете отредактировать описания и уточнить области действий.",
-				type: "positive",
-				position: "bottom-right",
-				icon: "smart_display",
-				timeout: 5000,
-				actions: [
-					{
-						label: "Понятно",
-						color: "white",
-						handler: () => {},
-					},
-				],
-			});
-		} else {
 			$q.notify({
 				message: "Шаги успешно добавлены",
 				type: "positive",
 				position: "top-right",
 			});
 		}
-	} catch {
+	} catch (error) {
+		console.error(error);
 		$q.notify({
-			message: uploadMode.value === "video" ? "Ошибка обработки видео" : "Ошибка создания шагов",
+			message: uploadMode.value === "video" ? "Ошибка загрузки видео" : "Ошибка создания шагов",
 			type: "negative",
 			position: "top",
 		});
@@ -279,7 +286,6 @@ const addSteps = async () => {
 .modal-create-step {
 	min-width: 460px;
 	max-width: 520px;
-	border-radius: 14px;
 }
 
 /* ——— Переключатель ——— */

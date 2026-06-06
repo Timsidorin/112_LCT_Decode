@@ -1,7 +1,9 @@
 import base64
+from typing import BinaryIO
 import hashlib
 import mimetypes
 import os
+import threading
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -18,9 +20,12 @@ from core.logging_config import logger
 
 
 class S3Service:
+    _bucket_checked: bool = False
+    _bucket_check_lock = threading.Lock()
+
     def __init__(
         self,
-        session: AsyncSession,
+        session: Optional[AsyncSession] = None,
         aws_access_key_id: str = configs.AWS_ACCESS_KEY_ID,
         aws_secret_access_key: str = configs.AWS_SECRET_ACCESS_KEY,
         region_name: str = configs.S3_REGION_NAME,
@@ -37,8 +42,14 @@ class S3Service:
         self.bucket_name = bucket_name
         self.endpoint_url = endpoint_url
 
-        # Проверка и создание бакета при инициализации
-        self._ensure_bucket_exists()
+    def _ensure_bucket_exists_once(self) -> None:
+        if self.__class__._bucket_checked:
+            return
+        with self.__class__._bucket_check_lock:
+            if self.__class__._bucket_checked:
+                return
+            self._ensure_bucket_exists()
+            self.__class__._bucket_checked = True
 
     def _ensure_bucket_exists(self):
         """Проверяет существование бакета и создает его если не существует"""
@@ -68,16 +79,86 @@ class S3Service:
         unique_id = str(uuid.uuid4())
         return f"photos/{unique_id}.{extension}"
 
+    def generate_task_object_key(
+        self, user_id: int, original_filename: str, prefix: str = "tasks"
+    ) -> str:
+        extension = (
+            original_filename.split(".")[-1] if "." in original_filename else "bin"
+        )
+        unique_id = str(uuid.uuid4())
+        return f"{prefix}/{user_id}/{unique_id}.{extension}"
+
+    def generate_result_object_key(
+        self, user_id: int, task_id: str, original_filename: str
+    ) -> str:
+        extension = (
+            original_filename.split(".")[-1] if "." in original_filename else "bin"
+        )
+        return f"tasks/{user_id}/results/{task_id}.{extension}"
+
+    def upload_bytes_sync(
+        self, file_content: bytes, object_name: str, content_type: str | None = None
+    ) -> str:
+        self._ensure_bucket_exists_once()
+        if content_type is None:
+            content_type, _ = mimetypes.guess_type(object_name)
+        if content_type is None:
+            content_type = "application/octet-stream"
+        self.s3_client.put_object(
+            Bucket=self.bucket_name,
+            Key=object_name,
+            Body=file_content,
+            ContentType=content_type,
+            ACL="public-read",
+        )
+        return f"{self.endpoint_url}/{self.bucket_name}/{object_name}"
+
+    def upload_fileobj_sync(
+        self, file_obj: BinaryIO, object_name: str, content_type: str | None = None
+    ) -> str:
+        self._ensure_bucket_exists_once()
+        if content_type is None:
+            content_type, _ = mimetypes.guess_type(object_name)
+        if content_type is None:
+            content_type = "application/octet-stream"
+        self.s3_client.upload_fileobj(
+            Fileobj=file_obj,
+            Bucket=self.bucket_name,
+            Key=object_name,
+            ExtraArgs={"ContentType": content_type, "ACL": "public-read"},
+        )
+        return f"{self.endpoint_url}/{self.bucket_name}/{object_name}"
+
+    def download_bytes_sync(self, object_key: str) -> bytes:
+        self._ensure_bucket_exists_once()
+        response = self.s3_client.get_object(Bucket=self.bucket_name, Key=object_key)
+        return response["Body"].read()
+
+    @staticmethod
+    def key_from_public_url(file_url: str, bucket_name: str, endpoint_url: str) -> str:
+        """Извлекает S3 key из публичного URL."""
+        prefix = f"{endpoint_url.rstrip('/')}/{bucket_name}/"
+        if file_url.startswith(prefix):
+            return file_url[len(prefix) :]
+        if f"/{bucket_name}/" in file_url:
+            return file_url.split(f"/{bucket_name}/", 1)[1]
+        return file_url.split("/")[-1]
+
     async def upload_file(
         self, file_content: bytes, object_name: str, training_uuid: UUID4
     ) -> str:
         """Загружает файл в S3, сохраняет в БД и возвращает URL"""
+        import asyncio
+        await asyncio.to_thread(self._ensure_bucket_exists_once)
+
         content_type, _ = mimetypes.guess_type(object_name)
         if content_type is None:
             content_type = "application/octet-stream"
 
         try:
-            self.s3_client.put_object(
+            # Выполняем синхронный вызов boto3 в отдельном потоке
+            await asyncio.to_thread(
+                self.s3_client.put_object,
                 Bucket=self.bucket_name,
                 Key=object_name,
                 Body=file_content,
@@ -94,12 +175,17 @@ class S3Service:
 
     async def delete_file(self, object_name: str):
         """Удаляет файл из S3"""
+        import asyncio
+        await asyncio.to_thread(self._ensure_bucket_exists_once)
+
         key = "/".join(object_name.split("/photos/")[-1].split("/"))
         object_name = f"photos/{key}"
         logger.debug("Удаление объекта: {}", object_name)
         try:
-            response = self.s3_client.delete_objects(
-                Bucket=self.bucket_name, Delete={"Objects": [{"Key": object_name}]}
+            response = await asyncio.to_thread(
+                self.s3_client.delete_objects,
+                Bucket=self.bucket_name,
+                Delete={"Objects": [{"Key": object_name}]},
             )
             if "Deleted" in response:
                 return True

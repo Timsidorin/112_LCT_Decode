@@ -87,6 +87,12 @@ class Training(Base):
         comment="Разрешены ли подсказки в прохождении",
     )
 
+    icon: Mapped[Optional[str]] = mapped_column(
+        sa.String,
+        nullable=True,
+        comment="URL иконки тренинга",
+    )
+
     created_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime, server_default=text("NOW()")
     )
@@ -286,3 +292,6 @@ class TrainingPassageAttempt(Base):
         back_populates="passage_attempts",
         lazy="selectin",
     )
+
+
+from models.users import User  # noqa: E402, F401
