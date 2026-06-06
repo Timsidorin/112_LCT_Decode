@@ -242,10 +242,15 @@ onUnmounted(() => {
 }
 
 .empty-state {
+	flex: 1;
+	min-height: 0;
 	display: flex;
-	align-items: center;
+	align-items: flex-start;
 	justify-content: center;
-	min-height: 80vh;
+	overflow-x: hidden;
+	overflow-y: auto;
+	padding: 16px;
+	-webkit-overflow-scrolling: touch;
 }
 
 .edit-split {

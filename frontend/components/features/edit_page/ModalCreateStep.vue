@@ -335,11 +335,21 @@ const addSteps = async () => {
 
 /* ——— Список фото ——— */
 .photo-list-scroll {
-	max-height: 240px;
+	max-height: min(42vh, 320px);
 	overflow-y: auto;
 	border: 1px solid rgba(0, 0, 0, 0.06);
 	border-radius: 10px;
 	padding: 8px;
+	scrollbar-gutter: stable;
+}
+
+.photo-list-scroll::-webkit-scrollbar {
+	width: 8px;
+}
+
+.photo-list-scroll::-webkit-scrollbar-thumb {
+	background: rgba(80, 100, 247, 0.28);
+	border-radius: 999px;
 }
 
 .photo-dropzone {
