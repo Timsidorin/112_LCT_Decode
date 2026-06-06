@@ -19,11 +19,7 @@ services:
       dockerfile: dockerfile
     container_name: backend
     env_file:
-      - .env.docker
-      - path: .env
-        required: false
-      - path: ./backend/.env
-        required: false
+      - ./backend/.env
     environment:
       DB_HOST: db
       DB_PORT: "5432"
@@ -57,11 +53,7 @@ services:
     image: postgres:15
     container_name: db
     env_file:
-      - .env.docker
-      - path: .env
-        required: false
-      - path: ./backend/.env
-        required: false
+      - ./backend/.env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin}
@@ -84,10 +76,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis
-    env_file:
-      - .env.docker
-      - path: .env
-        required: false
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
@@ -106,11 +94,7 @@ services:
       dockerfile: dockerfile
     container_name: celery_worker
     env_file:
-      - .env.docker
-      - path: .env
-        required: false
-      - path: ./backend/.env
-        required: false
+      - ./backend/.env
     entrypoint: ["celery"]
     command: >
       -A core.celery_app worker
@@ -140,10 +124,6 @@ services:
   nginx:
     image: nginx:stable-alpine
     container_name: nginx-proxy
-    env_file:
-      - .env.docker
-      - path: .env
-        required: false
     ports:
       - "80:80"
       - "443:443"
@@ -163,10 +143,6 @@ services:
   certbot:
     image: certbot/certbot:latest
     container_name: certbot
-    env_file:
-      - .env.docker
-      - path: .env
-        required: false
     volumes:
       - ./certbot/www:/var/www/certbot
       - ./certbot/conf:/etc/letsencrypt
