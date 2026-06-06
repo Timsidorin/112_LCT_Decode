@@ -22,13 +22,9 @@ services:
       - ./backend/.env
     environment:
       DB_HOST: db
-      DB_PORT: "5432"
-      DB_USER: ${POSTGRES_USER:-postgres}
-      DB_NAME: ${POSTGRES_DB:-timofeymac}
-      DB_PASS: ${POSTGRES_PASSWORD:-admin}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
-      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
       HOST: 0.0.0.0
     depends_on:
       db:
@@ -54,17 +50,21 @@ services:
     container_name: db
     env_file:
       - ./backend/.env
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin}
-      POSTGRES_DB: ${POSTGRES_DB:-timofeymac}
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        export POSTGRES_USER="$${DB_USER:-postgres}"
+        export POSTGRES_PASSWORD="$${DB_PASS:-admin}"
+        export POSTGRES_DB="$${DB_NAME:-timofeymac}"
+        exec docker-entrypoint.sh postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"',
+          'pg_isready -U "$${DB_USER:-postgres}" -d "$${DB_NAME:-timofeymac}"',
         ]
       interval: 5s
       timeout: 5s
@@ -103,13 +103,9 @@ services:
       --hostname=worker@%h
     environment:
       DB_HOST: db
-      DB_PORT: "5432"
-      DB_USER: ${POSTGRES_USER:-postgres}
-      DB_NAME: ${POSTGRES_DB:-timofeymac}
-      DB_PASS: ${POSTGRES_PASSWORD:-admin}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
-      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
     depends_on:
       db:
         condition: service_healthy
