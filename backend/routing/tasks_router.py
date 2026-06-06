@@ -33,6 +33,19 @@ async def list_tasks(
     return tasks
 
 
+@router.post("/active/dismiss", name="Сбросить зависшие задачи пользователя")
+async def dismiss_active_tasks(
+    user: User = Depends(get_current_user),
+    tasks_repo: TasksRepository = Depends(get_tasks_repository),
+):
+    """Помечает pending/processing задачи failed — если очередь «зависла» в интерфейсе."""
+    count = await tasks_repo.fail_active_tasks(
+        user_id=user.id,
+        error_message="Задача отменена пользователем",
+    )
+    return {"dismissed": count}
+
+
 @router.get("/{task_id}", response_model=TaskResponse, name="Задача по ID")
 async def get_task(
     task_id: UUID4,

@@ -139,7 +139,7 @@ class TrainingStep(Base):
 
     __tablename__ = "training_steps"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     training_uuid: Mapped[UUID4] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("trainings.uuid", ondelete="CASCADE"),

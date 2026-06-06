@@ -330,12 +330,16 @@ class TrainingsService:
         Этот метод делегирует сохранение в репозиторий.
         """
         try:
+            from utils.pg_sequences import sync_training_steps_id_sequence
+
             training_exists = await self.repo.check_training_exists(training_uuid)
             if not training_exists:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Тренинг с UUID {training_uuid} не найден",
                 )
+
+            await sync_training_steps_id_sequence(self.session)
 
             steps_data_to_create = []
 
@@ -889,6 +893,10 @@ class TrainingsService:
         if not ai_steps:
             return []
 
+        from utils.pg_sequences import sync_training_steps_id_sequence
+
+        await sync_training_steps_id_sequence(self.session)
+
         try:
             DEFAULT_ACTION_TYPE_ID = 1
 
@@ -1013,8 +1021,6 @@ class TrainingsService:
                     annotation=step_data.instruction_md,
                 )
                 self.session.add(new_step)
-                await self.session.commit()
-
                 created_steps_info.append(
                     {
                         "step_number": next_step_number + i,
@@ -1034,9 +1040,29 @@ class TrainingsService:
                     }
                 )
 
+            await self.session.commit()
+
             return created_steps_info
 
         except HTTPException:
+            raise
+        except IntegrityError as exc:
+            await self.session.rollback()
+            err = str(getattr(exc, "orig", exc))
+            if "training_steps_pkey" in err or "UniqueViolation" in err:
+                await sync_training_steps_id_sequence(self.session)
+                await self.session.commit()
+                logger.error(
+                    "Конфликт id training_steps после синхронизации sequence: {}",
+                    err,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=(
+                        "Ошибка создания шагов: конфликт идентификаторов в базе данных. "
+                        "Обновите backend (alembic upgrade head) и повторите загрузку видео."
+                    ),
+                )
             raise
         except Exception as e:
             await self.session.rollback()

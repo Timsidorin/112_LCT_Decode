@@ -93,9 +93,21 @@
 						</div>
 					</div>
 
-					<div class="processing-panel__footer">
-						<q-icon name="check_circle_outline" size="16px" class="processing-panel__footer-icon" />
-						<span>Можно продолжать работу — обработка идёт в фоне</span>
+					<div class="processing-panel__footer column q-gutter-y-xs">
+						<div class="row items-center no-wrap">
+							<q-icon name="check_circle_outline" size="16px" class="processing-panel__footer-icon" />
+							<span>Можно продолжать работу — обработка идёт в фоне</span>
+						</div>
+						<q-btn
+							flat
+							dense
+							no-caps
+							color="grey-7"
+							label="Сбросить зависшие задачи"
+							class="processing-panel__dismiss"
+							:loading="dismissing"
+							@click="dismissStuckTasks"
+						/>
 					</div>
 				</div>
 			</q-menu>
@@ -104,12 +116,14 @@
 </template>
 
 <script setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useQuasar } from "quasar";
+import { tasksApi } from "@api";
 import { useNotificationsStore } from "@store/notifications.js";
 
 const $q = useQuasar();
 const notificationsStore = useNotificationsStore();
+const dismissing = ref(false);
 
 const headerProgress = computed(() => {
 	const tasks = notificationsStore.activeTasks;
@@ -147,6 +161,31 @@ function statusText(status) {
 		processing: "AI анализирует видео и создаёт шаги",
 	};
 	return map[status] || "Обработка";
+}
+
+async function dismissStuckTasks() {
+	if (dismissing.value) return;
+	dismissing.value = true;
+	try {
+		const { data } = await tasksApi.dismissActiveTasks();
+		notificationsStore.pruneStaleTasks();
+		await notificationsStore.syncActiveTasks();
+		$q.notify({
+			type: "info",
+			message: data?.dismissed
+				? `Сброшено задач: ${data.dismissed}`
+				: "Активных задач не было",
+			position: "top-right",
+		});
+	} catch {
+		$q.notify({
+			type: "negative",
+			message: "Не удалось сбросить задачи",
+			position: "top-right",
+		});
+	} finally {
+		dismissing.value = false;
+	}
 }
 </script>
 

@@ -119,6 +119,12 @@ async def _run_training_video_async(task_id: str) -> dict:
         )
 
         async with session_factory() as session:
+            from utils.pg_sequences import sync_training_steps_id_sequence
+
+            await sync_training_steps_id_sequence(session)
+            await session.commit()
+
+        async with session_factory() as session:
             trainings_service = TrainingsService(session)
             created = await trainings_service.create_steps_from_ai_steps(
                 training_uuid=training_uuid,
