@@ -1,7 +1,7 @@
 import os
 from typing import Optional
 
-from pydantic import Field
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -118,6 +118,27 @@ class Configs(BaseSettings):
     CELERY_RESULT_BACKEND: str = Field(
         default="redis://localhost:6379/0", env="CELERY_RESULT_BACKEND"
     )
+
+    # ------------------- OAuth Yandex ID -----------------------------------
+    YANDEX_CLIENT_ID: str = Field(default="", env="YANDEX_CLIENT_ID")
+    YANDEX_CLIENT_SECRET: str = Field(
+        default="",
+        validation_alias=AliasChoices("YANDEX_CLIENT_SECRET", "CLIENT_SECRET"),
+    )
+    YANDEX_REDIRECT_URI: str = Field(
+        default="http://localhost:8002/auth/yandex/callback",
+        env="YANDEX_REDIRECT_URI",
+    )
+    FRONTEND_PUBLIC_URL: str = Field(
+        default="http://localhost:5173",
+        env="FRONTEND_PUBLIC_URL",
+    )
+
+    @model_validator(mode="after")
+    def _yandex_redirect_non_empty(self) -> "Configs":
+        if not (self.YANDEX_REDIRECT_URI or "").strip():
+            self.YANDEX_REDIRECT_URI = "http://localhost:8002/auth/yandex/callback"
+        return self
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"),
