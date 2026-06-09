@@ -229,32 +229,78 @@ const saveKeyPress = async () => {
 
 const openHotkeyDialog = () => { isHotkeyDialogOpen.value = true; };
 
-const selectEvent = async (event) => {
-	store.selectEvent(event);
+function buildSingleActionArea(step) {
+	const a = step?.area || {};
+	const area = {};
+	for (const k of [
+		"x",
+		"y",
+		"width",
+		"height",
+		"metaText",
+		"metaKeywords",
+		"metaFontSize",
+		"metaMatchMode",
+		"metaPattern",
+		"metaPatternPreset",
+		"metaTextScale",
+	]) {
+		if (a[k] != null) area[k] = a[k];
+	}
+	return area;
+}
+
+async function persistActionTypeForStep(event) {
+	if (!store.trainingData?.uuid || !store.selectedStep?.id || !event?.id) return;
 	const step = store.selectedStep;
 	const seq = getExplicitActions(step);
-	if (seq?.length && store.trainingData?.uuid && step?.id && !isKeyPressType(event)) {
+	let body;
+	if (seq?.length) {
 		const idx = Math.min(
 			Math.max(0, store.stepActionEditIndex ?? 0),
 			seq.length - 1
 		);
 		const actions = seq.map((x) => ({ ...x }));
 		actions[idx] = { ...actions[idx], action_type_id: event.id };
-		const newArea = buildAreaWithActions(actions, step.area);
-		try {
-			await trainingStepApi.editStep(store.trainingData.uuid, step.id, {
-				action_type_id: actions[0].action_type_id,
-				area: newArea,
-			});
-			Object.assign(step.area, newArea);
-			step.action_type = { ...findToolbarEventById(actions[0].action_type_id) };
-		} catch (e) {
-			console.error(e);
-		}
+		body = {
+			action_type_id: actions[0].action_type_id,
+			area: buildAreaWithActions(actions, step.area),
+		};
+	} else {
+		body = {
+			action_type_id: event.id,
+			area: buildSingleActionArea(step),
+		};
 	}
+	await trainingStepApi.editStep(store.trainingData.uuid, step.id, body);
+	if (!step.area) step.area = {};
+	Object.assign(step.area, body.area);
+	const resolved = findToolbarEventById(body.action_type_id);
+	step.action_type = { ...resolved };
+	const stepInList = store.steps?.find((s) => s.id === step.id);
+	if (stepInList) {
+		stepInList.action_type = { ...resolved };
+		if (!stepInList.area) stepInList.area = {};
+		Object.assign(stepInList.area, body.area);
+	}
+}
+
+const selectEvent = async (event) => {
+	store.selectEvent(event);
 	if (isKeyPressType(event)) {
 		await saveKeyPress();
 		openHotkeyDialog();
+		return;
+	}
+	try {
+		await persistActionTypeForStep(event);
+	} catch (e) {
+		console.error(e);
+		$q.notify({
+			color: "negative",
+			message: "Не удалось сохранить тип действия",
+			position: "top",
+		});
 	}
 };
 
