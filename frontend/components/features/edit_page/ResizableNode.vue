@@ -34,6 +34,8 @@ import {
 	getExplicitActions,
 	buildAreaWithActions,
 	findToolbarEventById,
+	sanitizeAreaForActionType,
+	patchStepInStore,
 } from "@utils/stepActionSequence.js";
 import InputText from "@components/features/edit_page/InputText.vue";
 import WatchKey from "@components/features/edit_page/WatchKey.vue";
@@ -230,8 +232,8 @@ function autoExpand(txt) {
 	props.node.style = { ...(props.node.style || {}), width: `${newW}px`, height: `${newH}px` };
 }
 
-function buildPayloadArea(rectOverride) {
-	const step = store.selectedStep;
+function buildPayloadArea(rectOverride, stepOverride = null) {
+	const step = stepOverride || store.selectedStep;
 	const ev = store.selectedEvent;
 	if (!step?.id || !ev?.id) return null;
 	const seq = getExplicitActions(step);
@@ -264,32 +266,21 @@ function buildPayloadArea(rectOverride) {
 	}
 	return {
 		action_type_id: ev.id,
-		area: { ...rect, ...meta },
+		area: sanitizeAreaForActionType(step.area, ev.id, { ...rect, ...meta }),
 	};
 }
 
 // ── Сохранение ────────────────────────────────────────────────────────────
 async function saveAll() {
-	if (!store.trainingData?.uuid || !store.selectedStep?.id) return;
-	const body = buildPayloadArea();
+	const stepId = store.selectedStep?.id;
+	const trainingUuid = store.trainingData?.uuid;
+	if (!trainingUuid || !stepId) return;
+	const step = store.steps?.find((s) => s.id === stepId) || store.selectedStep;
+	const body = buildPayloadArea(null, step);
 	if (!body) return;
 	try {
-		await trainingStepApi.editStep(
-			store.trainingData.uuid,
-			store.selectedStep.id,
-			body
-		);
-		ensureArea();
-		Object.assign(store.selectedStep.area, body.area);
-		store.selectedStep.action_type = {
-			...findToolbarEventById(body.action_type_id),
-		};
-		const stepInList = store.steps?.find((s) => s.id === store.selectedStep.id);
-		if (stepInList) {
-			if (!stepInList.area) stepInList.area = {};
-			Object.assign(stepInList.area, body.area);
-			stepInList.action_type = { ...findToolbarEventById(body.action_type_id) };
-		}
+		await trainingStepApi.editStep(trainingUuid, stepId, body);
+		patchStepInStore(store.steps, stepId, body);
 	} catch {
 		// тихо игнорируем
 	}
@@ -297,24 +288,19 @@ async function saveAll() {
 
 /** Автосохранение после ресайза */
 async function onResizeEnd() {
+	const stepId = store.selectedStep?.id;
+	const trainingUuid = store.trainingData?.uuid;
 	const eventType = store.selectedEvent;
 	if (!eventType || !eventRequiresAreaCoordinates(eventType)) return;
-	if (!store.trainingData?.uuid || !store.selectedStep?.id) return;
+	if (!trainingUuid || !stepId) return;
+	const step = store.steps?.find((s) => s.id === stepId) || store.selectedStep;
 	const r = getAreaForSave?.();
 	if (!r || !r.width || !r.height) return;
-	const body = buildPayloadArea(r);
+	const body = buildPayloadArea(r, step);
 	if (!body) return;
 	try {
-		await trainingStepApi.editStep(
-			store.trainingData.uuid,
-			store.selectedStep.id,
-			body
-		);
-		ensureArea();
-		Object.assign(store.selectedStep.area, body.area);
-		store.selectedStep.action_type = {
-			...findToolbarEventById(body.action_type_id),
-		};
+		await trainingStepApi.editStep(trainingUuid, stepId, body);
+		patchStepInStore(store.steps, stepId, body);
 		$q.notify({ color: 'positive', message: 'Размер сохранён', position: 'bottom-right', icon: 'check_circle', timeout: 1000 });
 	} catch {
 		// тихо игнорируем

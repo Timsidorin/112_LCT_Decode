@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { createComparator } from "@utils/mixed.js";
+import { cloneJson } from "@utils/stepActionSequence.js";
 
 export const useTrainingData = defineStore("training", () => {
 	const trainingData = ref(null);
@@ -15,8 +16,9 @@ export const useTrainingData = defineStore("training", () => {
 	};
 
 	function setTrainingData(newTrainingData) {
-		trainingData.value = newTrainingData;
-		setSteps(newTrainingData.steps.sort(createComparator('step_number')));
+		const data = cloneJson(newTrainingData);
+		trainingData.value = data;
+		setSteps([...(data.steps || [])].sort(createComparator("step_number")));
 	}
 
 	function setSteps(newSteps) {

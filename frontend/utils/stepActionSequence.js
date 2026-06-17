@@ -3,6 +3,8 @@
  * Совместимо с «плоским» area + step.action_type (одно действие).
  */
 
+import { isInputTextType, isKeyPressType } from "./actionTypes.js";
+
 export const KNOWN_ACTION_EVENTS = [
 	{ id: 1, type: "leftClick", name: "Левый клик" },
 	{ id: 2, type: "rightClick", name: "Правый клик" },
@@ -70,9 +72,62 @@ export function buildAreaWithActions(actions, baseArea = {}) {
 	};
 	const meta = _pickMetaFromArea(first);
 	return {
-		...baseArea,
 		...rect,
 		...meta,
 		actions: actions.map((x) => ({ ...x })),
 	};
+}
+
+const TEXT_META_KEYS = [
+	"metaText",
+	"metaFontSize",
+	"metaMatchMode",
+	"metaPattern",
+	"metaPatternPreset",
+	"metaTextScale",
+];
+
+/** Клонирует JSON-совместимые данные (area, шаг). */
+export function cloneJson(value) {
+	if (value == null) return value;
+	return JSON.parse(JSON.stringify(value));
+}
+
+/**
+ * Оставляет в area только поля, релевантные типу действия.
+ * Иначе metaText от «ввода текста» остаётся на шагах-кликах и ломает прохождение.
+ */
+export function sanitizeAreaForActionType(area, actionTypeId, rectOverride = {}) {
+	const source = { ...(area || {}), ...rectOverride };
+	const event = findToolbarEventById(actionTypeId);
+	const out = {};
+	for (const k of ["x", "y", "width", "height"]) {
+		if (source[k] != null) out[k] = source[k];
+	}
+	if (Array.isArray(source.actions) && source.actions.length) {
+		out.actions = cloneJson(source.actions);
+	}
+	if (isInputTextType(event)) {
+		for (const k of TEXT_META_KEYS) {
+			if (source[k] != null) out[k] = source[k];
+		}
+	} else if (isKeyPressType(event)) {
+		if (Array.isArray(source.metaKeywords)) {
+			out.metaKeywords = [...source.metaKeywords];
+		}
+	}
+	return out;
+}
+
+/** Обновляет шаг в store по id (не зависит от текущего selectedStep). */
+export function patchStepInStore(steps, stepId, { action_type_id, area }) {
+	const step = steps?.find((s) => s.id === stepId);
+	if (!step) return;
+	if (area !== undefined) {
+		step.area = cloneJson(area);
+	}
+	if (action_type_id != null) {
+		step.action_type_id = action_type_id;
+		step.action_type = { ...findToolbarEventById(action_type_id) };
+	}
 }

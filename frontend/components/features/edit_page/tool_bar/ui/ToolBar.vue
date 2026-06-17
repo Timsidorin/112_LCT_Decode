@@ -123,6 +123,8 @@ import {
 	getExplicitActions,
 	buildAreaWithActions,
 	findToolbarEventById,
+	sanitizeAreaForActionType,
+	patchStepInStore,
 } from "@utils/stepActionSequence.js";
 import { trainingStepApi } from "@api";
 import { useTrainingData } from "@store/editTraining.js";
@@ -229,30 +231,11 @@ const saveKeyPress = async () => {
 
 const openHotkeyDialog = () => { isHotkeyDialogOpen.value = true; };
 
-function buildSingleActionArea(step) {
-	const a = step?.area || {};
-	const area = {};
-	for (const k of [
-		"x",
-		"y",
-		"width",
-		"height",
-		"metaText",
-		"metaKeywords",
-		"metaFontSize",
-		"metaMatchMode",
-		"metaPattern",
-		"metaPatternPreset",
-		"metaTextScale",
-	]) {
-		if (a[k] != null) area[k] = a[k];
-	}
-	return area;
-}
-
 async function persistActionTypeForStep(event) {
 	if (!store.trainingData?.uuid || !store.selectedStep?.id || !event?.id) return;
-	const step = store.selectedStep;
+	const stepId = store.selectedStep.id;
+	const trainingUuid = store.trainingData.uuid;
+	const step = store.steps?.find((s) => s.id === stepId) || store.selectedStep;
 	const seq = getExplicitActions(step);
 	let body;
 	if (seq?.length) {
@@ -269,20 +252,11 @@ async function persistActionTypeForStep(event) {
 	} else {
 		body = {
 			action_type_id: event.id,
-			area: buildSingleActionArea(step),
+			area: sanitizeAreaForActionType(step.area, event.id),
 		};
 	}
-	await trainingStepApi.editStep(store.trainingData.uuid, step.id, body);
-	if (!step.area) step.area = {};
-	Object.assign(step.area, body.area);
-	const resolved = findToolbarEventById(body.action_type_id);
-	step.action_type = { ...resolved };
-	const stepInList = store.steps?.find((s) => s.id === step.id);
-	if (stepInList) {
-		stepInList.action_type = { ...resolved };
-		if (!stepInList.area) stepInList.area = {};
-		Object.assign(stepInList.area, body.area);
-	}
+	await trainingStepApi.editStep(trainingUuid, stepId, body);
+	patchStepInStore(store.steps, stepId, body);
 }
 
 const selectEvent = async (event) => {
