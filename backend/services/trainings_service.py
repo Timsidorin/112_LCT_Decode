@@ -41,6 +41,29 @@ from services.pdf_ai_service import PdfAiService
 
 # ID типа действия «Нажатие клавиши» — область хранит только metaKeywords
 ACTION_TYPE_KEY_PRESS_ID = 6
+ACTION_TYPE_INPUT_TEXT_ID = 5
+
+_AREA_COORD_KEYS = frozenset({"x", "y", "width", "height", "actions"})
+
+
+def _sanitize_area_for_action_type(
+    area: Optional[Dict], action_type_id: Optional[int]
+) -> Optional[Dict]:
+    """Убирает metaText с шагов-кликов — иначе прохождение требует ввод текста."""
+    if not isinstance(area, dict):
+        return area
+    if action_type_id == ACTION_TYPE_KEY_PRESS_ID:
+        keywords = area.get("metaKeywords")
+        return {
+            "metaKeywords": keywords if isinstance(keywords, list) else [],
+        }
+    if action_type_id == ACTION_TYPE_INPUT_TEXT_ID:
+        return area
+    return {
+        k: v
+        for k, v in area.items()
+        if k in _AREA_COORD_KEYS and v is not None
+    }
 
 # Ключи из VideoAIService → id в typesactions (create_initial_actions.py)
 ACTION_TYPE_KEY_TO_ID = {
@@ -511,9 +534,13 @@ class TrainingsService:
                 if isinstance(existing_area, dict):
                     update_data["area"] = {**existing_area, **update_data["area"]}
 
+            final_action_type_id = update_data.get(
+                "action_type_id", existing_step.action_type_id
+            )
+
             # keyPress: область только metaKeywords, без координат
-            if update_data.get("action_type_id") == ACTION_TYPE_KEY_PRESS_ID:
-                area_src = update_data.get("area") or {}
+            if final_action_type_id == ACTION_TYPE_KEY_PRESS_ID:
+                area_src = update_data.get("area") or existing_step.area or {}
                 update_data["area"] = {
                     "metaKeywords": (
                         area_src.get("metaKeywords")
@@ -521,6 +548,10 @@ class TrainingsService:
                         else []
                     )
                 }
+            elif "area" in update_data and update_data["area"] is not None:
+                update_data["area"] = _sanitize_area_for_action_type(
+                    update_data["area"], final_action_type_id
+                )
 
             if update_data:
                 await self.repo.update_training_step(step_id, update_data)
