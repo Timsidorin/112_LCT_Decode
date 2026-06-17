@@ -33,40 +33,75 @@
 			</q-btn>
 		</div>
 
-		<div v-if="store.selectedStep" class="multi-action-strip">
-			<q-btn
-				dense
-				no-caps
-				outline
-				color="primary"
-				size="sm"
-				icon="playlist_add"
-				label="Ещё действие на этом шаге"
-				@click="addChainAction"
-			/>
-			<q-btn
-				v-if="chainLength > 1"
-				dense
-				no-caps
-				flat
-				color="grey-8"
-				size="sm"
-				icon="playlist_remove"
-				label="Оставить одно"
-				@click="collapseChain"
-			/>
+		<div v-if="store.selectedStep" class="multi-action-strip glass-panel">
+			<div class="multi-action-header row items-center justify-between">
+				<div class="multi-action-title row items-center no-wrap">
+					<q-icon name="account_tree" size="16px" class="q-mr-xs" color="primary" />
+					<span>Подшаги</span>
+					<q-badge
+						v-if="chainLength > 1"
+						color="primary"
+						class="q-ml-xs"
+						:label="chainLength"
+					/>
+				</div>
+				<q-btn
+					dense
+					no-caps
+					unelevated
+					color="primary"
+					size="sm"
+					icon="playlist_add"
+					label="Добавить"
+					class="multi-action-btn"
+					@click="addChainAction"
+				>
+					<q-tooltip>Добавить подшаг</q-tooltip>
+				</q-btn>
+			</div>
+
 			<div v-if="chainLength > 1" class="multi-action-tabs row items-center q-gutter-xs">
-				<span class="text-caption text-grey-7">Подшаг:</span>
+				<span class="text-caption text-grey-7">Текущий:</span>
 				<q-btn-toggle
 					v-model="slotTab"
 					:options="slotOptions"
 					dense
 					no-caps
-					size="sm"
-					color="primary"
+					unelevated
+					rounded
+					color="grey-2"
+					text-color="grey-8"
 					toggle-color="primary"
-					flat
+					toggle-text-color="white"
+					class="multi-action-toggle"
 				/>
+			</div>
+
+			<div v-if="chainLength > 1" class="multi-action-actions row items-center q-gutter-xs">
+				<q-btn
+					dense
+					round
+					flat
+					color="negative"
+					size="sm"
+					icon="remove_circle_outline"
+					class="multi-action-btn multi-action-btn--danger"
+					@click="removeCurrentChainAction"
+				>
+					<q-tooltip>Удалить текущий подшаг</q-tooltip>
+				</q-btn>
+				<q-btn
+					dense
+					round
+					flat
+					color="grey-8"
+					size="sm"
+					icon="playlist_remove"
+					class="multi-action-btn"
+					@click="collapseChain"
+				>
+					<q-tooltip>Оставить только один подшаг</q-tooltip>
+				</q-btn>
 			</div>
 		</div>
 
@@ -370,7 +405,10 @@ async function collapseChain() {
 	try {
 		await trainingStepApi.editStep(store.trainingData.uuid, step.id, {
 			action_type_id: f.action_type_id,
-			area: flat,
+			area: {
+				...flat,
+				actions: [],
+			},
 		});
 		if (!step.area) step.area = {};
 		Object.assign(step.area, flat);
@@ -380,6 +418,68 @@ async function collapseChain() {
 		$q.notify({ color: "positive", message: "Оставлено одно действие", position: "bottom-right", timeout: 1500 });
 	} catch (e) {
 		console.error(e);
+	}
+}
+
+async function removeCurrentChainAction() {
+	if (!store.trainingData?.uuid || !store.selectedStep?.id) return;
+	const step = store.selectedStep;
+	const seq = getExplicitActions(step);
+	if (!seq || seq.length < 2) return;
+
+	const idx = Math.min(
+		Math.max(0, store.stepActionEditIndex ?? 0),
+		seq.length - 1
+	);
+	const actions = seq.filter((_, i) => i !== idx);
+	const nextIdx = Math.min(idx, actions.length - 1);
+
+	try {
+		if (actions.length === 1) {
+			const f = { ...actions[0] };
+			const flat = {
+				x: f.x,
+				y: f.y,
+				width: f.width,
+				height: f.height,
+			};
+			for (const k of ["metaText", "metaKeywords", "metaFontSize", "metaMatchMode", "metaPattern", "metaPatternPreset", "metaTextScale"]) {
+				if (f[k] != null) flat[k] = f[k];
+			}
+			await trainingStepApi.editStep(store.trainingData.uuid, step.id, {
+				action_type_id: f.action_type_id,
+				area: {
+					...flat,
+					actions: [],
+				},
+			});
+			if (!step.area) step.area = {};
+			Object.assign(step.area, flat);
+			delete step.area.actions;
+			step.action_type = { ...findToolbarEventById(f.action_type_id) };
+			store.stepActionEditIndex = 0;
+			store.selectEvent(findToolbarEventById(f.action_type_id));
+		} else {
+			const newArea = buildAreaWithActions(actions, step.area);
+			await trainingStepApi.editStep(store.trainingData.uuid, step.id, {
+				action_type_id: actions[0].action_type_id,
+				area: newArea,
+			});
+			if (!step.area) step.area = {};
+			Object.assign(step.area, newArea);
+			step.action_type = { ...findToolbarEventById(actions[0].action_type_id) };
+			store.stepActionEditIndex = nextIdx;
+			store.selectEvent(findToolbarEventById(actions[nextIdx].action_type_id));
+		}
+		$q.notify({
+			color: "positive",
+			message: "Подшаг удалён",
+			position: "bottom-right",
+			timeout: 1200,
+		});
+	} catch (e) {
+		console.error(e);
+		$q.notify({ color: "negative", message: "Не удалось удалить подшаг", position: "top" });
 	}
 }
 
@@ -497,14 +597,52 @@ const events = [
 .multi-action-strip {
 	display: flex;
 	flex-direction: column;
-	align-items: center;
+	align-items: stretch;
 	gap: 6px;
 	pointer-events: auto;
-	max-width: min(520px, 92vw);
+	max-width: min(340px, 90vw);
+	padding: 8px 10px;
+	border-radius: 14px;
+	border: 1px solid rgba(80, 100, 247, 0.14);
+	box-shadow: 0 6px 14px rgba(15, 23, 42, 0.07);
+}
+
+.multi-action-header {
+	gap: 8px;
+}
+
+.multi-action-title {
+	font-size: 12px;
+	font-weight: 600;
+	color: #334155;
+}
+
+.multi-action-btn {
+	border-radius: 999px;
+	padding: 4px 8px;
+}
+
+.multi-action-btn--danger {
+	background: rgba(239, 68, 68, 0.08);
 }
 
 .multi-action-tabs {
 	flex-wrap: wrap;
-	justify-content: center;
+	justify-content: flex-start;
+}
+
+.multi-action-tabs .text-caption {
+	font-size: 11px;
+}
+
+.multi-action-toggle :deep(.q-btn) {
+	min-width: 30px;
+	min-height: 28px;
+	border-radius: 999px;
+}
+
+.multi-action-actions {
+	flex-wrap: nowrap;
+	justify-content: flex-end;
 }
 </style>

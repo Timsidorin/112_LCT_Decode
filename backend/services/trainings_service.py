@@ -529,10 +529,16 @@ class TrainingsService:
                 if isinstance(existing_meta, dict):
                     update_data["meta"] = {**existing_meta, **update_data["meta"]}
 
-            if "area" in update_data and update_data["area"] is not None:
+            area_patch = update_data.get("area") if "area" in update_data else None
+            if isinstance(area_patch, dict):
                 existing_area = existing_step.area or {}
                 if isinstance(existing_area, dict):
-                    update_data["area"] = {**existing_area, **update_data["area"]}
+                    merged_area = {**existing_area, **area_patch}
+                    # Если клиент прислал area без actions, это явный переход к одиночному шагу.
+                    # Иначе старые actions "призраками" остаются в прохождении.
+                    if "actions" not in area_patch:
+                        merged_area.pop("actions", None)
+                    update_data["area"] = merged_area
 
             final_action_type_id = update_data.get(
                 "action_type_id", existing_step.action_type_id
