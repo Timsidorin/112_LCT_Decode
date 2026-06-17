@@ -5,22 +5,23 @@
 ## Быстрый старт
 
 ```bash
-# 1. Переменные инфраструктуры (PostgreSQL)
-cp .env.example .env
-# отредактируйте POSTGRES_PASSWORD
+# 1. Конфиг — backend/.env (секреты, S3, AI, Yandex)
+cp backend/.env.example backend/.env   # если файла ещё нет
+nano backend/.env
 
-# 2. Секреты приложения (S3, AI, JWT)
-cp backend/.env.example backend/.env
-# заполните SECRET_KEY, AWS_*, AI_API_KEY и т.д.
+# 2. Опционально: симлинк для подстановки POSTGRES_* в compose
+ln -sf backend/.env .env
 
 # 3. Сборка и запуск
 docker compose up -d --build
 
 # 4. Проверка
 docker compose ps
-docker compose logs -f celery_worker
 docker compose logs -f backend
+docker compose logs -f celery_worker
 ```
+
+> Все переменные — в **`backend/.env`**. Корневой `.env` не обязателен (только симлинк для compose).
 
 После старта:
 - Сайт: `https://<ваш-домен>/` (через nginx)
@@ -71,6 +72,56 @@ docker compose up -d --build
 # миграции применяются при рестарте backend (alembic upgrade head)
 ```
 
+## CI/CD из GitHub Actions
+
+В репозитории добавлен workflow: `.github/workflows/deploy.yml`.
+
+Он запускается при `push` в `main` (и вручную через `workflow_dispatch`) и выполняет на сервере:
+
+```bash
+docker compose down
+docker compose up -d --build
+```
+
+### 1) Одноразово на сервере
+
+```bash
+# под пользователем деплоя
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+cd /opt
+git clone <ваш-repo-url> events_knastu
+cd events_knastu
+cp backend/.env.example backend/.env
+nano backend/.env
+docker compose up -d --build
+```
+
+### 2) Секреты в GitHub
+
+Repo → Settings → Secrets and variables → Actions → New repository secret:
+
+- `DEPLOY_HOST` — IP/домен сервера
+- `DEPLOY_PORT` — обычно `22`
+- `DEPLOY_USER` — пользователь на сервере (например `deploy`)
+- `DEPLOY_SSH_KEY` — приватный SSH-ключ (целиком, включая `BEGIN/END`)
+- `DEPLOY_PATH` — путь к репозиторию на сервере (например `/opt/events_knastu`)
+
+### 3) Публичный ключ на сервер
+
+Добавьте публичную часть ключа в `~/.ssh/authorized_keys` пользователя `DEPLOY_USER`.
+
+Проверка:
+
+```bash
+ssh -i <private_key> <DEPLOY_USER>@<DEPLOY_HOST>
+```
+
+### 4) Триггер деплоя
+
+Сделайте push в `main` — workflow сам подключится по SSH и выполнит пересборку.
+
+Если нужен ручной запуск: GitHub → Actions → `Deploy To Server` → Run workflow.
+
 ## Локальная разработка без Docker
 
 Два терминала + Redis локально:
@@ -92,23 +143,22 @@ uv run celery -A core.celery_app worker --loglevel=info -P solo -c 1   # Windows
 
 ## Переменные окружения
 
-### Корень `.env` (docker-compose)
+Конфиг: **`backend/.env`**
 
-- `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
-- `LOG_LEVEL` (опционально)
-- `DOMAIN` (для документации SSL)
+| Переменные | Назначение |
+|------------|------------|
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | PostgreSQL (должны совпадать с `DB_*`) |
+| `REDIS_URL`, `CELERY_*` | В Docker лучше `redis://redis:6379/0` |
+| `SECRET_KEY`, `AWS_*`, `S3_*`, `AI_*` | Backend |
+| `YANDEX_*`, `FRONTEND_PUBLIC_URL` | OAuth |
 
-### `backend/.env`
+Compose переопределяет для Docker: `DB_HOST=db`, `DB_PASS` из `POSTGRES_PASSWORD`.
 
-Секреты и внешние сервисы. В Docker **переопределяются** из compose:
-- `DB_HOST=db`
-- `REDIS_URL=redis://redis:6379/0`
-- `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`
+Опционально: `ln -sf backend/.env .env` — чтобы compose подставлял `${POSTGRES_*}` из вашего файла.
 
-Обязательно задайте в `backend/.env`:
-- `SECRET_KEY`
-- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `S3_ENDPOINT_URL`
-- `AI_API_KEY`
+**Важно:** `POSTGRES_PASSWORD` = пароль при создании volume `postgres_data` (обычно `admin`).
+
+`DB_HOST=localhost` в `backend/.env` **игнорируется** — compose задаёт `DB_HOST=db`.
 
 ## SSL (Let's Encrypt)
 
@@ -121,20 +171,60 @@ Nginx ожидает сертификаты в `./certbot/conf`. Первичн�
 - Redis: `docker compose exec redis redis-cli ping` → `PONG`
 - S3 и AI ключи в `backend/.env`
 
-**WebSocket не подключается**
-- Nginx проксирует `/api/` с заголовками Upgrade (см. `nginx/conf.d/default.conf`)
-- Frontend в production собирается с `VITE_API_BASE_URL=/api`
+**502 Bad Gateway на `/api/*` или WebSocket**
+
+Nginx работает, **backend недоступен**. Проверьте:
+
+```bash
+docker compose ps
+docker compose logs backend --tail 50
+docker compose exec nginx-proxy wget -qO- http://backend:8001/ || echo "backend unreachable"
+```
+
+Если backend `Restarting` или `unhealthy` — сначала почините БД (см. выше `InvalidPasswordError`):
+
+```bash
+grep '^DB_' backend/.env
+docker compose exec db psql -U postgres -d postgres -c "ALTER USER postgres WITH PASSWORD 'ВАШ_DB_PASS';"
+docker compose up -d --build backend celery_worker
+docker compose restart nginx-proxy
+```
+
+Когда backend `healthy`, API и `wss://.../api/ws/notifications` заработают.
+
 
 **Worker падает при второй задаче (только dev на Windows)**
 - Используйте `-P solo -c 1`; в Docker (Linux) это не требуется
 
-**Порты 5432/6379 снаружи не проброшены** — так безопаснее на сервере. Для отладки добавьте в `docker-compose.yml`:
+**Backend unhealthy / Restarting (1)**
 
-```yaml
-db:
-  ports:
-    - "5432:5432"
-redis:
-  ports:
-    - "6379:6379"
+```bash
+docker compose logs backend --tail 80
 ```
+
+Частые причины:
+
+1. **Пароль PostgreSQL не совпадает** — volume `postgres_data` хранит старый пароль. Если в `.env` сменили `POSTGRES_PASSWORD`, БД всё равно использует пароль при первом создании volume.
+
+   ```bash
+   grep POSTGRES_PASSWORD backend/.env
+   grep DB_PASS backend/.env
+   ```
+
+   Пароль в `.env` (`POSTGRES_PASSWORD`) должен совпадать с тем, с которым volume был создан (раньше часто `admin`). Либо верните `POSTGRES_PASSWORD=admin`, либо пересоздайте volume (удалит данные!):
+
+   ```bash
+   docker compose down
+   docker volume rm constructor_training_postgres_data
+   docker compose up -d --build
+   ```
+
+2. **`backend/.env` переопределяет хост БД** — в Docker не задавайте `DB_HOST=localhost` в `backend/.env`. Хост задаёт `docker-compose.yml` (`DB_HOST=db`).
+
+3. **Ошибка миграции Alembic** — в логах будет `alembic upgrade head`. Ручной прогон:
+
+   ```bash
+   docker compose run --rm backend alembic upgrade head
+   ```
+
+Для отладки БД/Redis с хоста добавьте в `docker-compose.yml` проброс портов `5432` / `6379`.
