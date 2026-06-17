@@ -2,7 +2,7 @@ name: Deploy To Server
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
   workflow_dispatch:
 
 concurrency:
@@ -26,9 +26,18 @@ jobs:
           script: |
             set -e
             cd "${{ secrets.DEPLOY_PATH }}"
-            git fetch --all --prune
-            git checkout "${{ github.ref_name }}"
-            git pull --ff-only origin "${{ github.ref_name }}"
+            BRANCH="${{ secrets.DEPLOY_BRANCH }}"
+            if [ -z "$BRANCH" ]; then
+              BRANCH="${{ github.ref_name }}"
+            fi
+
+            git fetch origin "$BRANCH" --prune
+            if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+              git checkout "$BRANCH"
+            else
+              git checkout -b "$BRANCH"
+            fi
+            git reset --hard "origin/$BRANCH"
             docker compose down
             docker compose up -d --build
             docker compose ps
