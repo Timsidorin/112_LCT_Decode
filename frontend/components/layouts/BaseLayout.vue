@@ -22,7 +22,7 @@
 							<q-icon name="school" size="22px" color="primary" />
 						</div>
 						<div v-if="$q.screen.gt.xs" class="brand-copy column justify-center q-ml-sm">
-							<span class="brand-title">Конструктор тренингов</span>
+							<span class="brand-title">SkillSnap - конструктор тренингов</span>
 							<span v-if="$q.screen.gt.sm" class="brand-tagline">Личный кабинет</span>
 						</div>
 					</router-link>
