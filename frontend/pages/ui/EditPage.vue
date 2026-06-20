@@ -2,34 +2,10 @@
 	<div class="edit-page">
 		<BackgroundProcessingIndicator class="edit-page__processing-indicator" />
 
-		<q-btn
-			flat
-			no-caps
-			rounded
-			color="primary"
-			icon="home"
-			label="На главную"
-			class="edit-page__home-btn glass-panel"
-			@click="goToTrainingList"
-		/>
+		<scenario-map-dialog v-model="scenarioMapOpen" />
+		<editor-passage-preview v-model="previewOpen" />
 
 		<base-loader size="100px" v-model="loadingStatus" />
-
-		<q-btn
-			v-show="cropButtonVisible"
-			flat
-			no-caps
-			rounded
-			color="primary"
-			icon="crop"
-			label="Скриншот"
-			class="edit-crop-fab glass-panel"
-			@click="cropDialogOpen = true"
-		>
-			<q-tooltip anchor="center left" self="center right" :offset="[8, 0]">
-				Обрезать или расширить кадр (PDF и др.)
-			</q-tooltip>
-		</q-btn>
 
 		<template v-if="!loadingStatus">
 			<!-- Пустое состояние: нет шагов -->
@@ -41,13 +17,17 @@
 			<template v-else>
 				<div class="edit-split premium-bg-container">
 					<div class="edit-split__main">
+						<edit-editor-header
+							:show-crop="cropButtonVisible"
+							@preview="previewOpen = true"
+							@map="scenarioMapOpen = true"
+							@crop="cropDialogOpen = true"
+							@home="goToTrainingList"
+							@duplicate="trainingEvents.duplicateStep.trigger()"
+						/>
+
 						<transition name="step-fade" mode="out-in">
 							<div :key="selectedStep?.id" class="edit-content-wrap">
-								<div class="edit-overlays">
-									<group-steps />
-									<step-title />
-								</div>
-
 								<div v-if="selectedStep?.image_url" class="edit-area">
 									<transition name="hint-fade">
 										<div
@@ -55,7 +35,7 @@
 											class="edit-hint"
 										>
 											<q-icon name="touch_app" size="20px" class="q-mr-sm" />
-											<span>Выберите действие в тулбаре и выделите область на скриншоте</span>
+											<span>Выберите действие внизу и выделите область на скриншоте</span>
 											<q-btn
 												flat
 												dense
@@ -69,8 +49,8 @@
 										</div>
 									</transition>
 
-									<tool-bar />
 									<vue-flow-component />
+									<tool-bar />
 								</div>
 							</div>
 						</transition>
@@ -96,21 +76,25 @@
 <script setup>
 import VueFlowComponent from "@components/features/edit_page/VueFlowComponent.vue";
 import { UploadPhoto } from "@components/features/edit_page/uploader_photo";
-import { GroupSteps } from "@components/features/edit_page/drop_down_list_steps";
 import { TrainingApi } from "@api";
 import { useRoute, useRouter } from "vue-router";
 import { nextTick, onMounted, onUnmounted, ref, watch, computed } from "vue";
 import { storeToRefs } from "pinia";
 import { useTrainingData } from "@store/editTraining.js";
-import StepTitle from "@components/features/edit_page/StepTitle.vue";
 import StepTaskEditor from "@components/features/edit_page/StepTaskEditor.vue";
 import AIGeneratedBanner from "@components/features/edit_page/AIGeneratedBanner.vue";
 import { BaseLoader } from "@components/base_components/index.js";
 import ToolBar from "@components/features/edit_page/tool_bar/ui/ToolBar.vue";
 import ScreenshotCropDialog from "@components/features/edit_page/ScreenshotCropDialog.vue";
 import { useQuasar } from "quasar";
-import { useNotificationsStore } from "@store/notifications.js";
 import BackgroundProcessingIndicator from "@components/features/personal_page/header/BackgroundProcessingIndicator.vue";
+import ScenarioMapDialog from "@components/features/edit_page/scenario_map/ScenarioMapDialog.vue";
+import EditorPassagePreview from "@components/features/edit_page/EditorPassagePreview.vue";
+import EditEditorHeader from "@components/features/edit_page/EditEditorHeader.vue";
+import { useEditorKeyboard } from "@composables/useEditorKeyboard.js";
+import { useEditorSaveStatus } from "@composables/useEditorSaveStatus.js";
+import { trainingEvents } from "@utils/eventBus.js";
+import { onBeforeRouteLeave } from "vue-router";
 
 const trainingApi = new TrainingApi();
 const route = useRoute();
@@ -120,6 +104,9 @@ const $q = useQuasar();
 const { steps: storeSteps, selectedStep } = storeToRefs(store);
 
 const loadingStatus = ref(true);
+const scenarioMapOpen = ref(false);
+const previewOpen = ref(false);
+const { isDirty } = useEditorSaveStatus();
 
 const trainingUuidParam = computed(() => {
 	const u = route.params?.uuid;
@@ -206,10 +193,48 @@ function onTrainingTaskUpdate(event) {
 onMounted(() => {
 	getTrainingData();
 	window.addEventListener("training-task-update", onTrainingTaskUpdate);
+	window.addEventListener("beforeunload", onBeforeUnload);
 });
 
 onUnmounted(() => {
 	window.removeEventListener("training-task-update", onTrainingTaskUpdate);
+	window.removeEventListener("beforeunload", onBeforeUnload);
+});
+
+function onBeforeUnload(event) {
+	if (!isDirty.value) return;
+	event.preventDefault();
+	event.returnValue = "";
+}
+
+onBeforeRouteLeave((_to, _from, next) => {
+	if (!isDirty.value) {
+		next();
+		return;
+	}
+	$q.dialog({
+		title: "Есть несохранённые изменения",
+		message: "Покинуть редактор? Несохранённые правки могут быть потеряны.",
+		cancel: { label: "Остаться", flat: true },
+		ok: { label: "Выйти", color: "negative", flat: true },
+	}).onOk(() => next()).onCancel(() => next(false));
+});
+
+useEditorKeyboard({
+	onPreviousStep: () => store.goToPreviousStep(),
+	onNextStep: () => store.goToNextStep(),
+	onSelectAction: (id) => trainingEvents.selectActionById.trigger(id),
+	onClearArea: () => trainingEvents.clearCurrentArea.trigger(),
+	onForceSave: () => trainingEvents.forceSave.trigger(),
+	onTogglePreview: () => {
+		if (!storeSteps.value?.length) return;
+		previewOpen.value = !previewOpen.value;
+	},
+	onDuplicateStep: () => trainingEvents.duplicateStep.trigger(),
+	onEscape: () => {
+		previewOpen.value = false;
+		scenarioMapOpen.value = false;
+	},
 });
 </script>
 
@@ -226,36 +251,45 @@ onUnmounted(() => {
 
 .edit-page__processing-indicator {
 	position: fixed;
-	top: 58px;
+	top: 12px;
 	right: 12px;
 	z-index: 201;
 }
 
-.edit-page__home-btn {
-	position: fixed;
-	top: 12px;
-	right: 12px;
-	left: auto;
-	z-index: 200;
-	background: rgba(255, 255, 255, 0.95) !important;
-	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-}
-
-.empty-state {
+.edit-area {
+	position: relative;
+	z-index: 1;
 	flex: 1;
 	min-height: 0;
+	width: 100%;
 	display: flex;
-	align-items: flex-start;
-	justify-content: center;
-	overflow-x: hidden;
-	overflow-y: auto;
-	padding: 16px;
-	-webkit-overflow-scrolling: touch;
+	flex-direction: column;
+	overflow: hidden;
+	padding-bottom: 88px;
+}
+
+.edit-hint {
+	position: absolute;
+	bottom: 96px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 11;
+	display: flex;
+	align-items: center;
+	background: rgba(30, 30, 50, 0.8);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	color: white;
+	padding: 10px 16px;
+	border-radius: 12px;
+	font-size: 13px;
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+	white-space: nowrap;
 }
 
 .edit-split {
 	display: flex;
-	flex-direction: row-reverse;
+	flex-direction: row;
 	flex: 1;
 	min-height: 0;
 	width: 100%;
@@ -281,58 +315,19 @@ onUnmounted(() => {
 	z-index: 100;
 	padding: 12px;
 	gap: 12px;
+	border-left: 1px solid rgba(15, 23, 42, 0.08);
 }
 
-.edit-overlays {
-	position: absolute;
-	top: 0;
-	left: 0;
-	right: 0;
-	z-index: 40;
-	pointer-events: none;
-}
-
-.edit-overlays > * {
-	pointer-events: auto;
-}
-
-.edit-crop-fab {
-	position: fixed;
-	top: 64px;
-	right: 12px;
-	z-index: 199;
-	background: rgba(255, 255, 255, 0.95) !important;
-	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-}
-
-.edit-area {
-	position: relative;
-	z-index: 1;
+.empty-state {
 	flex: 1;
 	min-height: 0;
-	width: 100%;
 	display: flex;
-	flex-direction: column;
-	overflow: hidden;
-}
-
-.edit-hint {
-	position: absolute;
-	bottom: 88px;
-	left: 50%;
-	transform: translateX(-50%);
-	z-index: 100;
-	display: flex;
-	align-items: center;
-	background: rgba(30, 30, 50, 0.8);
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
-	color: white;
-	padding: 10px 16px;
-	border-radius: 12px;
-	font-size: 13px;
-	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-	white-space: nowrap;
+	align-items: flex-start;
+	justify-content: center;
+	overflow-x: hidden;
+	overflow-y: auto;
+	padding: 16px;
+	-webkit-overflow-scrolling: touch;
 }
 
 .hint-fade-enter-active,

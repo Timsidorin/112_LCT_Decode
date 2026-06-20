@@ -96,9 +96,7 @@ const persistName = async (nameToSave) => {
 
 <style scoped>
 .step-title-card {
-	top: 16px;
-	left: 50%;
-	transform: translateX(-50%);
+	position: relative;
 	z-index: 100;
 	padding: 8px 18px;
 	border-radius: 100px;
@@ -107,7 +105,7 @@ const persistName = async (nameToSave) => {
 }
 
 .step-title-card:hover {
-	transform: translateX(-50%) translateY(-2px) scale(1.02);
+	transform: translateY(-2px) scale(1.02);
 	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(168, 85, 247, 0.2);
 }
 

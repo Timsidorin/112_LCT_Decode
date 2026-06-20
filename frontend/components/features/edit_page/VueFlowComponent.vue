@@ -1,8 +1,9 @@
 <template>
 	<div ref="flowContainerRef" class="fullscreen-flow">
 		<VueFlow
+			id="edit-screenshot-flow"
 			v-model="nodes"
-			:default-viewport="{ zoom: 0.7 }"
+			:default-viewport="{ zoom: DEFAULT_ZOOM }"
 			:node-types="nodeTypes"
 			@node-drag-start="onNodeDragStart"
 			@node-drag-stop="onNodeDragStop"
@@ -42,8 +43,9 @@ const nodes = ref([]);
 const flowContainerRef = ref(null);
 const nodeTypes = { screenshot: ScreenshotNode };
 const DEFAULT_ZOOM = 0.7;
+const FLOW_ID = "edit-screenshot-flow";
 
-const { onPaneClick } = useVueFlow();
+const { onPaneClick } = useVueFlow({ id: FLOW_ID });
 
 const eventRequiresAreaOpt = (event) => eventRequiresArea(event);
 

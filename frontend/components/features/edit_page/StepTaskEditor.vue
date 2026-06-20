@@ -60,6 +60,7 @@
 			>
 				<q-tab name="edit" label="Редактор" />
 				<q-tab name="preview" label="Превью" />
+				<q-tab name="hint" label="Подсказка" />
 			</q-tabs>
 		</header>
 
@@ -82,6 +83,20 @@
 				v-html="previewHtml"
 				@click="onPreviewClick"
 			></div>
+			<div v-show="tab === 'hint'" class="step-task-editor__pane step-task-editor__pane--grow">
+				<p class="text-caption text-grey-7 q-mb-sm q-mt-none">
+					Показывается ученику при включённых подсказках, если он ошибся или застрял.
+				</p>
+				<q-input
+					:model-value="selectedStep?.hint ?? ''"
+					type="textarea"
+					autogrow
+					outlined
+					dense
+					placeholder="Например: нажмите кнопку «Войти» в правом верхнем углу"
+					@update:model-value="onHintInput"
+				/>
+			</div>
 		</div>
 
 		<!-- Кастомный Аудио-плеер -->
@@ -122,15 +137,18 @@ import { renderAnnotationToSafeHtml } from "@utils/renderAnnotationHtml.js";
 import { renderMarkdownToSafeHtml } from "@utils/renderMarkdown.js";
 import RichTaskEditor from "./RichTaskEditor.vue";
 import { trainingEvents } from "@utils/eventBus.js";
+import { useEditorSaveStatus } from "@composables/useEditorSaveStatus.js";
 
 const api = new TrainingStepApi();
 const tApi = new TrainingApi();
 const store = useTrainingData();
 const { selectedStep, trainingData, steps } = storeToRefs(store);
 const $q = useQuasar();
+const { markDirty, markSaving, markSaved, markError } = useEditorSaveStatus();
 
 const tab = ref("edit");
 const saveTimer = ref(null);
+const hintSaveTimer = ref(null);
 const isImproving = ref(false);
 const isGeneratingTTS = ref(false);
 
@@ -174,7 +192,15 @@ const previewHtml = computed(() =>
 function onAnnotationInput(v) {
 	if (!selectedStep.value) return;
 	selectedStep.value.annotation = v ?? "";
+	markDirty();
 	scheduleSave();
+}
+
+function onHintInput(v) {
+	if (!selectedStep.value) return;
+	selectedStep.value.hint = v ?? "";
+	markDirty();
+	scheduleHintSave();
 }
 
 const improveWithAI = async (variant = "general") => {
@@ -282,8 +308,13 @@ watch(
 			clearTimeout(saveTimer.value);
 			saveTimer.value = null;
 		}
+		if (hintSaveTimer.value) {
+			clearTimeout(hintSaveTimer.value);
+			hintSaveTimer.value = null;
+		}
 		if (oldId != null && newId !== oldId) {
 			await persistAnnotationForStepId(oldId);
+			await persistHintForStepId(oldId);
 		}
 		// Reset Audio
 		isAudioPlaying.value = false;
@@ -300,6 +331,14 @@ function scheduleSave() {
 	}, 800);
 }
 
+function scheduleHintSave() {
+	if (hintSaveTimer.value) clearTimeout(hintSaveTimer.value);
+	hintSaveTimer.value = setTimeout(() => {
+		hintSaveTimer.value = null;
+		void persistHint();
+	}, 800);
+}
+
 async function persistAnnotation() {
 	if (!trainingData.value?.uuid || !selectedStep.value?.id) return;
 	await persistAnnotationForStepId(selectedStep.value.id);
@@ -311,12 +350,15 @@ async function persistAnnotationForStepId(stepId) {
 	const step = steps.value?.find((s) => s.id === stepId);
 	if (!step) return;
 	const text = (step.annotation ?? "").trim();
+	markSaving();
 	try {
 		await api.editStep(trainingData.value.uuid, stepId, {
 			annotation: text || null,
 		});
 		step.annotation = text || null;
+		markSaved();
 	} catch {
+		markError("annotation");
 		$q.notify({
 			color: "negative",
 			message: "Не удалось сохранить задание",
@@ -325,13 +367,52 @@ async function persistAnnotationForStepId(stepId) {
 	}
 }
 
+async function persistHintForStepId(stepId) {
+	if (!trainingData.value?.uuid || !stepId) return;
+	const step = steps.value?.find((s) => s.id === stepId);
+	if (!step) return;
+	const text = (step.hint ?? "").trim();
+	markSaving();
+	try {
+		await api.editStep(trainingData.value.uuid, stepId, {
+			hint: text || null,
+		});
+		step.hint = text || null;
+		markSaved();
+	} catch {
+		markError("hint");
+		$q.notify({
+			color: "negative",
+			message: "Не удалось сохранить подсказку",
+			position: "top",
+		});
+	}
+}
+
+async function persistHint() {
+	if (!trainingData.value?.uuid || !selectedStep.value?.id) return;
+	await persistHintForStepId(selectedStep.value.id);
+}
+
 onBeforeUnmount(() => {
 	if (saveTimer.value) {
 		clearTimeout(saveTimer.value);
 		saveTimer.value = null;
 	}
+	if (hintSaveTimer.value) {
+		clearTimeout(hintSaveTimer.value);
+		hintSaveTimer.value = null;
+	}
 	if (selectedStep.value?.id) {
 		void persistAnnotationForStepId(selectedStep.value.id);
+		void persistHintForStepId(selectedStep.value.id);
+	}
+});
+
+trainingEvents.forceSave.on(() => {
+	if (selectedStep.value?.id) {
+		void persistAnnotationForStepId(selectedStep.value.id);
+		void persistHintForStepId(selectedStep.value.id);
 	}
 });
 

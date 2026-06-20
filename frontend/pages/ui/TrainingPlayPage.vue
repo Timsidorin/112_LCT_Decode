@@ -405,7 +405,7 @@ function toggleHintsForCurrentStep() {
 
 .play-layout__main {
 	display: flex;
-	flex-direction: row-reverse;
+	flex-direction: row;
 	flex: 1;
 	min-height: 0;
 	width: 100%;
@@ -430,6 +430,7 @@ function toggleHintsForCurrentStep() {
 	z-index: 100;
 	padding: 12px;
 	gap: 12px;
+	border-left: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 @media (max-width: 900px) {
@@ -437,15 +438,21 @@ function toggleHintsForCurrentStep() {
 		flex-direction: column;
 	}
 
+	.play-layout__main {
+		flex-direction: column;
+	}
+
 	.play-layout__task {
 		width: 100%;
 		max-height: min(45vh, 400px);
+		border-left: none;
 		border-top: 1px solid rgba(15, 23, 42, 0.08);
 	}
 
 	.play-top-bar--viewport-only {
 		left: 0;
 		right: 0;
+		padding-right: 12px;
 	}
 }
 
@@ -520,13 +527,12 @@ function toggleHintsForCurrentStep() {
 }
 
 /*
- * Десктоп: задание слева (row-reverse), панель не заходит на лист задания.
- * Совпадает с шириной .play-layout__task: min(420px, 38vw).
+ * Десктоп: задание справа — верхняя панель не заходит на панель задания.
  */
 .play-top-bar--viewport-only {
 	left: 0;
 	right: 0;
-	padding-left: calc(min(440px, 40vw) + 20px);
+	padding-right: calc(min(440px, 40vw) + 20px);
 }
 
 .play-top-bar__home {
