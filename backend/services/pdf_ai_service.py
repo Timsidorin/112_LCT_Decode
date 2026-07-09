@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 from fastapi import HTTPException, status
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 from core.config import configs
 from core.logging_config import logger
@@ -152,7 +152,7 @@ def _normalize_key_chord(raw: Any) -> Optional[List[str]]:
 
 class PdfAiService:
     def __init__(self):
-        self.client = OpenAI(
+        self.client = AsyncOpenAI(
             api_key=configs.AI_API_KEY,
             base_url=configs.AI_BASE_URL,
             timeout=httpx.Timeout(300.0, connect=30.0),
@@ -174,9 +174,11 @@ class PdfAiService:
         total_pages = min(len(doc), PDF_MAX_PAGES)
         logger.info(f"[PDF AI] Извлечение изображений из {total_pages} страниц")
 
-        results: List[PdfStepData] = []
         zoom = PDF_RENDER_DPI / 72.0
         matrix = fitz.Matrix(zoom, zoom)
+
+        # 1. Извлекаем все изображения и тексты (синхронно, быстро)
+        analysis_tasks = []
 
         for page_idx in range(total_pages):
             page = doc[page_idx]
@@ -194,42 +196,34 @@ class PdfAiService:
                 )
                 try:
                     pix = page.get_pixmap(matrix=matrix, alpha=False)
-                    png_bytes = pix.tobytes("png")
-                    step_data = await self._analyze_image_object(
-                        page_number=page_number,
-                        png_bytes=png_bytes,
-                        context_text=page_text_full,
-                        width=pix.width,
-                        height=pix.height,
-                        full_page=True,
-                    )
-                    if step_data:
-                        results.append(step_data)
+                    analysis_tasks.append({
+                        "page_number": page_number,
+                        "png_bytes": pix.tobytes("png"),
+                        "context_text": page_text_full,
+                        "width": pix.width,
+                        "height": pix.height,
+                        "full_page": True,
+                        "fallback": False
+                    })
                 except Exception as e:
-                    logger.warning(
-                        f"[PDF AI] Стр {page_number}: ошибка рендеринга страницы — {e}"
-                    )
+                    logger.warning(f"[PDF AI] Стр {page_number}: ошибка рендеринга страницы — {e}")
                 continue
 
             logger.info(
                 f"[PDF AI] Страница {page_number}: найдено {len(images_on_page)} объектов изображений"
             )
 
-            added_for_page = False
+            has_valid_images = False
             for img_info in images_on_page:
                 xref = img_info[0]
                 rects = page.get_image_rects(xref)
                 if not rects:
                     continue
 
-                # Работаем с первым вхождением изображения на странице
                 rect = rects[0]
-
-                # Фильтр на мелкие элементы (иконки, линии) — обычно скриншот крупный
                 if rect.width < PDF_MIN_IMG_WIDTH or rect.height < PDF_MIN_IMG_HEIGHT:
                     continue
 
-                # Извлекаем текст рядом с картинкой (±200 пикселей по вертикали)
                 context_rect = fitz.Rect(
                     0,
                     max(0, rect.y0 - 200),
@@ -237,59 +231,79 @@ class PdfAiService:
                     min(page.rect.height, rect.y1 + 200),
                 )
                 context_text = page.get_text("text", clip=context_rect).strip()
-                # Если контекст пустой — используем весь текст страницы
                 if not context_text:
                     context_text = page_text_full
 
-                # Рендерим именно область картинки
                 try:
                     pix = page.get_pixmap(matrix=matrix, clip=rect, alpha=False)
-                    png_bytes = pix.tobytes("png")
-                    img_width = pix.width
-                    img_height = pix.height
+                    analysis_tasks.append({
+                        "page_number": page_number,
+                        "png_bytes": pix.tobytes("png"),
+                        "context_text": context_text,
+                        "width": pix.width,
+                        "height": pix.height,
+                        "full_page": False,
+                        "fallback": False
+                    })
+                    has_valid_images = True
                 except Exception as e:
-                    logger.warning(
-                        f"[PDF AI] Стр {page_number}: ошибка рендеринга картинки {xref} — {e}"
-                    )
-                    continue
+                    logger.warning(f"[PDF AI] Стр {page_number}: ошибка рендеринга картинки {xref} — {e}")
 
-                # Анализируем через VLM
-                step_data = await self._analyze_image_object(
-                    page_number=page_number,
-                    png_bytes=png_bytes,
-                    context_text=context_text,
-                    width=img_width,
-                    height=img_height,
-                )
-
-                if step_data:
-                    results.append(step_data)
-                    added_for_page = True
-
-            # Если ни одно изображение не дало шага — рендерим всю страницу как fallback
-            if not added_for_page and page_text_full:
-                logger.info(
-                    f"[PDF AI] Страница {page_number}: изображения не дали шага, fallback — вся страница"
-                )
+            if not has_valid_images and page_text_full:
+                logger.info(f"[PDF AI] Страница {page_number}: изображения не валидны, fallback — вся страница")
                 try:
                     pix = page.get_pixmap(matrix=matrix, alpha=False)
-                    png_bytes = pix.tobytes("png")
-                    step_data = await self._analyze_image_object(
-                        page_number=page_number,
-                        png_bytes=png_bytes,
-                        context_text=page_text_full,
-                        width=pix.width,
-                        height=pix.height,
-                        full_page=True,
-                    )
-                    if step_data:
-                        results.append(step_data)
+                    analysis_tasks.append({
+                        "page_number": page_number,
+                        "png_bytes": pix.tobytes("png"),
+                        "context_text": page_text_full,
+                        "width": pix.width,
+                        "height": pix.height,
+                        "full_page": True,
+                        "fallback": True
+                    })
                 except Exception as e:
-                    logger.warning(
-                        f"[PDF AI] Стр {page_number}: ошибка fallback рендеринга — {e}"
-                    )
+                    logger.warning(f"[PDF AI] Стр {page_number}: ошибка fallback рендеринга — {e}")
 
         doc.close()
+
+        # 2. Выполняем запросы к VLM конкурентно (с ограничением параллелизма, чтобы не перегрузить API)
+        import asyncio
+
+        results: List[PdfStepData] = []
+        semaphore = asyncio.Semaphore(40)  # Максимум 40 параллельных запросов
+
+        async def _analyze_with_semaphore(kwargs):
+            fallback = kwargs.pop("fallback")
+            async with semaphore:
+                step_data = await self._analyze_image_object(**kwargs)
+                return {"page_number": kwargs["page_number"], "step_data": step_data, "fallback": fallback}
+
+        logger.info(f"[PDF AI] Запуск параллельного анализа {len(analysis_tasks)} изображений...")
+        tasks_futures = [_analyze_with_semaphore(kwargs) for kwargs in analysis_tasks]
+        
+        analysis_results = await asyncio.gather(*tasks_futures)
+
+        # 3. Собираем результаты, учитывая fallback логику
+        page_has_results = {}
+        for res in analysis_results:
+            pn = res["page_number"]
+            sd = res["step_data"]
+            fb = res["fallback"]
+            
+            if sd:
+                # Если это fallback результат, добавляем его только если для страницы еще нет обычных результатов
+                if fb:
+                    if not page_has_results.get(pn, False):
+                        results.append(sd)
+                        page_has_results[pn] = True
+                else:
+                    results.append(sd)
+                    page_has_results[pn] = True
+
+        # Сортируем результаты по номеру страницы, так как gather может вернуть их не в порядке добавления
+        results.sort(key=lambda x: x.page_number)
+
         logger.info(f"[PDF AI] Найдено {len(results)} шагов")
         return results
 
@@ -303,6 +317,11 @@ class PdfAiService:
         full_page: bool = False,
     ) -> Optional[PdfStepData]:
         """Анализирует ОДИН конкретный скриншот ПО."""
+        import asyncio
+        import base64
+        import re
+        import json
+        
         try:
             base64_image = base64.b64encode(png_bytes).decode("utf-8")
             template = (
@@ -312,7 +331,7 @@ class PdfAiService:
                 page_text=context_text[:4000] if context_text else "Контекст не найден."
             )
 
-            completion = self.client.chat.completions.create(
+            completion = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {
@@ -410,7 +429,8 @@ class PdfAiService:
             )
 
         except Exception as e:
-            logger.error(f"[PDF AI] Ошибка VLM для картинки: {e}")
+            import traceback
+            logger.error(f"[PDF AI] Ошибка VLM для картинки: {e}\n{traceback.format_exc()}")
             return None
 
     def _coerce_bbox(self, raw: Any) -> Optional[List[float]]:

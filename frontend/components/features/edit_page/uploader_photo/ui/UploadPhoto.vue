@@ -880,32 +880,31 @@ const uploadPdf = async () => {
 	loading.value = true;
 	try {
 		const response = await trainingApi.uploadPdf(route.params.uuid, pdfFile.value);
-		const createdStepsCount = response.data?.created_steps?.length || 0;
+		const data = response.data;
 
-		const { data } = await trainingApi.getTrainingByUuid(route.params.uuid);
-		store.setTrainingData(data);
+		ensureNotificationsConnected().registerTask({
+			id: data.task_id,
+			status: "pending",
+			progress: 0,
+			original_filename: pdfFile.value.name,
+			message: "PDF принят — создаём шаги тренинга",
+		});
+		void ensureNotificationsConnected().prepareSystemNotifications();
 
 		clearPdf();
 
-		if (createdStepsCount > 0) {
-			$q.notify({
-				message: `Успешно создано шагов: ${createdStepsCount}`,
-				caption: "AI проанализировал инструкцию и определил области действий.",
-				type: "positive",
-				position: "bottom-right",
-				icon: "picture_as_pdf",
-				timeout: 5000,
-			});
-		} else {
-			$q.notify({
-				message: "Шаги не были созданы",
-				caption: "AI не смог найти подходящие действия в инструкции. Попробуйте другой файл.",
-				type: "warning",
-				position: "bottom-right",
-				icon: "warning",
-				timeout: 7000,
-			});
-		}
+		$q.notify({
+			message: "PDF загружен и отправлен на обработку",
+			caption: "Разрешите уведомления Windows — сообщим, когда тренинг будет готов, даже если браузер свёрнут.",
+			type: "info",
+			position: "top-right",
+			icon: "hourglass_top",
+			timeout: 6000,
+			color: "primary",
+			classes: "beautiful-notify",
+		});
+
+		router.push("/personal/training");
 	} catch (err) {
 		console.error("PDF Processing Error:", err);
 		$q.notify({

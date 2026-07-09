@@ -32,12 +32,15 @@ class S3Service:
         bucket_name: str = configs.S3_BUCKET_NAME,
         endpoint_url: str = configs.S3_ENDPOINT_URL,
     ):
+        import botocore.config
+        s3_config = botocore.config.Config(max_pool_connections=50)
         self.s3_client = boto3.client(
             "s3",
             aws_access_key_id=aws_access_key_id,
             aws_secret_access_key=aws_secret_access_key,
             region_name=region_name,
             endpoint_url=endpoint_url,
+            config=s3_config,
         )
         self.bucket_name = bucket_name
         self.endpoint_url = endpoint_url

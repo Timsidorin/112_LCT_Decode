@@ -611,9 +611,9 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-	offSelectAction?.();
-	offClearArea?.();
-	offDuplicate?.();
+	offSelectAction?.off();
+	offClearArea?.off();
+	offDuplicate?.off();
 });
 </script>
 

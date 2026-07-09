@@ -27,3 +27,9 @@ def enqueue_process_training_video(task_id: str) -> None:
         "worker.tasks.process_training_video_task",
         args=[task_id],
     )
+
+def enqueue_process_training_pdf(task_id: str) -> None:
+    get_task_publisher().send_task(
+        "worker.tasks.process_training_pdf_task",
+        args=[task_id],
+    )

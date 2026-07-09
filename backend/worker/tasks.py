@@ -147,6 +147,25 @@ def process_training_video_task(self, task_id: str) -> dict:
         raise exc
 
 
+@celery_app.task(
+    name="worker.tasks.process_training_pdf_task",
+    bind=True,
+    max_retries=1,
+    time_limit=3600,
+    soft_time_limit=3300,
+)
+def process_training_pdf_task(self, task_id: str) -> dict:
+    """Фоновое создание шагов тренинга из PDF-инструкции (VLM + S3)."""
+    from worker.training_pdf import _run_training_pdf_async
+
+    try:
+        return run_worker_task(_run_training_pdf_async(task_id))
+    except Exception as exc:
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=exc, countdown=60)
+        raise exc
+
+
 @celery_app.task(name="worker.tasks.cleanup_expired_employee_accounts")
 def cleanup_expired_employee_accounts() -> dict:
     from services.temp_employee_accounts_service import TempEmployeeAccountsService

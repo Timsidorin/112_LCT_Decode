@@ -254,12 +254,16 @@ export const useNotificationsStore = defineStore("notifications", {
 			if (taskId && this.notifiedTerminal[taskId]) return;
 			if (taskId) this.notifiedTerminal[taskId] = "failed";
 
-			const title = data.error_message || data.message || "Ошибка обработки видео";
-			const caption = "Попробуйте загрузить видео ещё раз.";
+			const isPdf = data.task_type === "pdf_processing";
+			const defaultTitle = isPdf ? "Ошибка обработки PDF" : "Ошибка обработки видео";
+			const defaultCaption = isPdf ? "Попробуйте загрузить файл ещё раз." : "Попробуйте загрузить видео ещё раз.";
+
+			const title = data.error_message || data.message || defaultTitle;
+			const caption = defaultCaption;
 
 			if (document.hidden) {
 				showSystemNotification({
-					title: "Ошибка обработки видео",
+					title: defaultTitle,
 					body: title,
 					tag: taskId ? `training-failed-${taskId}` : undefined,
 				});

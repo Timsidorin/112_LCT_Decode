@@ -7,13 +7,14 @@ from pydantic import UUID4
 
 from depends import (
     get_gigachat_tts_service,
-    get_pdf_ai_service,
     get_s3_service,
     get_trainings_service,
     get_user_service,
     get_video_ai_service,
     oauth2_scheme,
+    get_current_creator,
 )
+from models.users import User
 from schemas.trainings import (
     PassageAnalyticsResponse,
     PassageCompleteRequest,
@@ -558,15 +559,14 @@ async def generate_step_tts(
 async def upload_pdf_for_training(
     training_uuid: UUID4,
     file: UploadFile = File(..., description="PDF-файл инструкции"),
-    pdf_ai_service: PdfAiService = Depends(get_pdf_ai_service),
     s3_service: S3Service = Depends(get_s3_service),
     trainings_service: TrainingsService = Depends(get_trainings_service),
     token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_current_creator),
 ):
     """
-    Принимает PDF-инструкцию, анализирует каждую страницу через VLM.
-    Модель по тексту инструкции определяет кликабельную область на скриншоте.
-    Для каждой страницы создаётся шаг тренинга с bbox, описанием и скрином.
+    Принимает PDF-инструкцию и ставит задачу на анализ каждой страницы через VLM в очередь.
+    Возвращает ID задачи для отслеживания.
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Загрузите файл в формате PDF")
@@ -575,15 +575,37 @@ async def upload_pdf_for_training(
     if len(pdf_bytes) == 0:
         raise HTTPException(status_code=400, detail="Файл PDF пустой")
 
-    created_steps = await trainings_service.add_steps_from_pdf(
-        training_uuid=training_uuid,
-        pdf_bytes=pdf_bytes,
-        pdf_ai_service=pdf_ai_service,
-        s3_service=s3_service,
+    # Save to S3 for background worker
+    from models.tasks import TaskType
+    from repositories.tasks_repository import TasksRepository
+    from core.task_queue import enqueue_process_training_pdf
+    import asyncio
+
+    # Ensure training exists and user is owner
+    training_exists = await trainings_service.repo.check_training_exists(training_uuid)
+    if not training_exists:
+        raise HTTPException(status_code=404, detail="Тренинг не найден")
+
+    # upload bytes to S3
+    object_key = s3_service.generate_task_object_key(
+        user.id, file.filename, prefix="pdf_uploads"
     )
+    file_url = await s3_service.upload_file(pdf_bytes, object_key, training_uuid)
+
+    tasks_repo = TasksRepository(trainings_service.session)
+    task = await tasks_repo.create(
+        user_id=user.id,
+        task_type=TaskType.PDF_PROCESSING.value,
+        status="pending",
+        original_filename=file.filename,
+        file_url=file_url,
+        training_uuid=training_uuid,
+    )
+
+    await asyncio.to_thread(enqueue_process_training_pdf, str(task.id))
 
     return {
         "success": True,
-        "message": f"PDF обработан. Создано {len(created_steps)} шагов.",
-        "created_steps": created_steps,
+        "message": "PDF загружен и поставлен в очередь на обработку",
+        "task_id": str(task.id)
     }

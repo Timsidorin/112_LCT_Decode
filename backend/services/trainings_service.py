@@ -1210,13 +1210,21 @@ class TrainingsService:
 
             created_steps_info = []
 
-            for i, step_data in enumerate(pdf_steps):
-                # Загружаем PNG страницы в S3
-                filename = f"pdf_step_{step_data.page_number:03d}.png"
+            # Параллельная загрузка PNG страниц в S3
+            import asyncio
+            async def _upload_step_image(idx, data):
+                filename = f"pdf_step_{data.page_number:03d}.png"
                 object_name = s3_service.generate_unique_filename(filename)
-                image_url = await s3_service.upload_file(
-                    step_data.page_bytes, object_name, training_uuid
-                )
+                url = await s3_service.upload_file(data.page_bytes, object_name, training_uuid)
+                return idx, url
+
+            upload_tasks = [_upload_step_image(i, step) for i, step in enumerate(pdf_steps)]
+            upload_results = await asyncio.gather(*upload_tasks)
+            upload_results.sort(key=lambda x: x[0])
+            image_urls = [res[1] for res in upload_results]
+
+            for i, step_data in enumerate(pdf_steps):
+                image_url = image_urls[i]
 
                 bbox = step_data.bbox
                 # bbox уже нормализован 0..1 в PdfAiService
