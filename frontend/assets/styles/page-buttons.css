@@ -1,0 +1,59 @@
+/* Shared rounded action buttons for org pages and import wizard */
+.wizard-btn {
+	font-weight: 600;
+	font-size: 14px;
+	padding: 10px 20px;
+	min-height: 42px;
+	transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.wizard-btn--primary {
+	box-shadow: 0 4px 14px rgba(80, 100, 247, 0.28);
+}
+
+.wizard-btn--primary:hover:not(.disabled):not(.q-btn--disabled) {
+	transform: translateY(-1px);
+	box-shadow: 0 6px 18px rgba(80, 100, 247, 0.35);
+}
+
+.wizard-btn--danger {
+	box-shadow: 0 4px 14px rgba(193, 0, 21, 0.22);
+}
+
+.wizard-btn--danger:hover:not(.disabled):not(.q-btn--disabled) {
+	transform: translateY(-1px);
+	box-shadow: 0 6px 18px rgba(193, 0, 21, 0.3);
+}
+
+.wizard-btn--outline {
+	border-width: 1.5px;
+}
+
+.wizard-btn--icon {
+	padding: 0;
+	min-height: unset;
+	box-shadow: none;
+}
+
+.wizard-btn--icon-danger:hover {
+	background: rgba(193, 0, 21, 0.08);
+}
+
+.org-subdialog {
+	min-width: 400px;
+	border-radius: 20px;
+	overflow: hidden;
+}
+
+.org-subdialog--wide {
+	min-width: 420px;
+	max-width: 520px;
+}
+
+.org-subdialog__header {
+	padding: 20px 24px 8px;
+}
+
+.org-subdialog__actions {
+	padding: 12px 24px 20px;
+}

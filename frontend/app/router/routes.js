@@ -13,6 +13,8 @@ import {
 	TrainingWelcomePage,
 	TrainingPlayPage,
 	CourseCreatePage,
+	OrganizationsPage,
+	OrganizationDetailPage,
 	YandexOAuthCallbackPage,
 } from "@pages";
 
@@ -50,6 +52,14 @@ export const routes = [
 			{
 				path: '/personal/courses',
 				component: CourseCreatePage,
+			},
+			{
+				path: '/personal/organizations',
+				component: OrganizationsPage,
+			},
+			{
+				path: '/personal/organizations/:id',
+				component: OrganizationDetailPage,
 			},
 		]
 	},

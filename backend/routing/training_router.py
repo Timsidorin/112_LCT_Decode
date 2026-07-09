@@ -30,6 +30,7 @@ from schemas.trainings import (
     TextRewriteRequest,
     TextRewriteResponse,
 )
+from schemas.users import UserRole
 from services.external_services.gigachat_tts_service import GigaChatTTSService
 from services.external_services.s3_service import S3Service
 from services.pdf_ai_service import PdfAiService
@@ -78,6 +79,8 @@ async def get_my_trainings(
     training_service: TrainingsService = Depends(get_trainings_service),
 ):
     user = await user_service.get_current_user(token)
+    if user.role == UserRole.EMPLOYEE:
+        return []
     trainings = await training_service.get_trainings_by_user_id(user.id)
 
     if not trainings:

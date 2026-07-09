@@ -1,4 +1,5 @@
 @import "@quasar/extras/material-icons/material-icons.css";
 @import "quasar/src/css/index.sass";
 @import "utilities.css";
+@import "page-buttons.css";
 @import "global.css";

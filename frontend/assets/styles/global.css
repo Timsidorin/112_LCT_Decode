@@ -151,6 +151,25 @@ body {
 	-moz-osx-font-smoothing: grayscale;
 }
 
+/* ——— Badges (avoid clipped label text) ——— */
+.q-badge:not(.q-badge--floating) {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 26px;
+	padding: 5px 11px;
+	line-height: 1.35;
+	font-size: 12px;
+	font-weight: 600;
+	border-radius: 8px;
+	vertical-align: middle;
+}
+
+.panel__title .q-badge {
+	align-self: center;
+	flex-shrink: 0;
+}
+
 /* ——— Keyframes ——— */
 @keyframes fadeIn {
 	from { opacity: 0; }

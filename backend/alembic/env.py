@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from alembic import context
 from core.database import DATABASE_URL, Base
 from models.courses import Course, course_trainings
+from models.organizations import Organization, OrganizationEmployee, organization_trainings
 from models.trainings import Levels, Tags, Training, TrainingStep, TypesAction
 from models.tasks import ProcessingTask
 from models.users import User

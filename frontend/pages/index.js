@@ -12,6 +12,8 @@ import PassageTraining from "@pages/ui/PassageTraining.vue";
 import TrainingWelcomePage from "@pages/ui/TrainingWelcomePage.vue";
 import TrainingPlayPage from "@pages/ui/TrainingPlayPage.vue";
 import CourseCreatePage from "@pages/ui/CourseCreatePage.vue";
+import OrganizationsPage from "@pages/ui/OrganizationsPage.vue";
+import OrganizationDetailPage from "@pages/ui/OrganizationDetailPage.vue";
 import YandexOAuthCallbackPage from "@pages/ui/YandexOAuthCallbackPage.vue";
 
 export {
@@ -29,5 +31,7 @@ export {
 	TrainingWelcomePage,
 	TrainingPlayPage,
 	CourseCreatePage,
+	OrganizationsPage,
+	OrganizationDetailPage,
 	YandexOAuthCallbackPage,
 };

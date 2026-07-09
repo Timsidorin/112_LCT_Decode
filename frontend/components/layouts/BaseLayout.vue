@@ -22,12 +22,13 @@
 							<q-icon name="school" size="22px" color="primary" />
 						</div>
 						<div v-if="$q.screen.gt.xs" class="brand-copy column justify-center q-ml-sm">
-							<span class="brand-title">SkillSnap - конструктор тренингов</span>
-							<span v-if="$q.screen.gt.sm" class="brand-tagline">Личный кабинет</span>
+							<span class="brand-title">{{ brandTitle }}</span>
+							<span v-if="$q.screen.gt.sm && !isEmployee" class="brand-tagline">Личный кабинет</span>
+							<span v-else-if="$q.screen.gt.sm && isEmployee" class="brand-tagline">Обучение</span>
 						</div>
 					</router-link>
 					<q-space />
-					<BackgroundProcessingIndicator />
+					<BackgroundProcessingIndicator v-if="!isEmployee" />
 					<div
 						v-if="$q.screen.gt.sm"
 						class="header-divider"
@@ -47,7 +48,7 @@
 			class="drawer"
 			:width="260"
 		>
-			<q-list class="drawer-nav-list" padding>
+			<q-list v-if="navigationButtons.length" class="drawer-nav-list" padding>
 				<q-item-label header class="drawer-nav-header">
 					Разделы
 				</q-item-label>
@@ -87,10 +88,20 @@
 </template>
 
 <script>
-import { ref } from "vue";
+import { computed, ref } from "vue";
+import { storeToRefs } from "pinia";
 import UserCard from "@components/features/personal_page/header/UserCard.vue";
 import BackgroundProcessingIndicator from "@components/features/personal_page/header/BackgroundProcessingIndicator.vue";
 import { useUserStore } from "@store/userData.js";
+
+const CREATOR_NAV = [
+	{ name: "Главная", icon: "home", url: "/personal/home" },
+	{ name: "Библиотека", icon: "menu_book", url: "/personal/library" },
+	{ name: "Мои тренинги", icon: "list_alt", url: "/personal/training" },
+	{ name: "Мои курсы", icon: "school", url: "/personal/courses" },
+	{ name: "Мои организации", icon: "business", url: "/personal/organizations" },
+	{ name: "Поддержка", icon: "help", url: "/personal/help" },
+];
 
 export default {
 	name: "BaseLayout",
@@ -103,15 +114,24 @@ export default {
 	},
 	setup() {
 		const drawerLeft = ref(false);
+		const userStore = useUserStore();
+		const { isEmployee } = storeToRefs(userStore);
+
+		const navigationButtons = computed(() =>
+			isEmployee.value
+				? [{ name: "Мои тренинги", icon: "school", url: "/personal/home" }]
+				: CREATOR_NAV,
+		);
+
+		const brandTitle = computed(() =>
+			isEmployee.value ? "SkillSnap" : "SkillSnap - конструктор тренингов",
+		);
+
 		return {
 			drawerLeft,
-			navigationButtons: [
-				{ name: "Главная", icon: "home", url: "/personal/home" },
-				{ name: "Библиотека", icon: "menu_book", url: "/personal/library" },
-				{ name: "Мои тренинги", icon: "list_alt", url: "/personal/training" },
-				{ name: "Мои курсы", icon: "school", url: "/personal/courses" },
-				{ name: "Поддержка", icon: "help", url: "/personal/help" },
-			],
+			isEmployee,
+			navigationButtons,
+			brandTitle,
 		};
 	},
 };

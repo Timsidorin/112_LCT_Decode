@@ -26,6 +26,10 @@ router.beforeEach(async (to, from, next) => {
 
 	// Между разделами ЛК не дергаем /auth/me — иначе при нагрузке на backend навигация зависает.
 	if (withinPersonal && userStore.isLoaded) {
+		if (userStore.isEmployee && to.path !== "/personal/home") {
+			next("/personal/home");
+			return;
+		}
 		next();
 		return;
 	}
@@ -33,6 +37,10 @@ router.beforeEach(async (to, from, next) => {
 	const auth = await checkAuth(tokenAuth);
 	if (!auth.status) {
 		next({ path: "/login", query: { redirect: to.fullPath } });
+		return;
+	}
+	if (userStore.isEmployee && to.path.startsWith("/personal") && to.path !== "/personal/home") {
+		next("/personal/home");
 		return;
 	}
 	next();

@@ -10,10 +10,12 @@ export const useUserStore = defineStore("user", {
 		last_name: "",
 		photo: "",
 		yandex_id: null,
+		role: "creator",
 		isLoaded: false,
 	}),
 	getters: {
 		getName: (state) => state.first_name || "Пользователь",
+		isEmployee: (state) => state.role === "employee",
 		/** Имя для шапки: имя из профиля или логин из почты Яндекса / метка для синтетического email */
 		fullName: (state) => {
 			const parts = [state.first_name, state.last_name].filter(Boolean).join(" ").trim();
@@ -44,6 +46,7 @@ export const useUserStore = defineStore("user", {
 			this.last_name = user.last_name ?? "";
 			this.photo = user.photo ?? "";
 			this.yandex_id = user.yandex_id ?? user.yandexId ?? null;
+			this.role = user.role || "creator";
 			this.isLoaded = true;
 		},
 		clearUser() {
@@ -54,6 +57,7 @@ export const useUserStore = defineStore("user", {
 			this.last_name = "";
 			this.photo = "";
 			this.yandex_id = null;
+			this.role = "creator";
 			this.isLoaded = false;
 		},
 		async fetchUser() {

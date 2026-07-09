@@ -1,10 +1,11 @@
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from models.users import User
+from models.users import User, UserRole
 from schemas.users import UserRegister
 from utils.security import get_password_hash
 
@@ -17,9 +18,16 @@ class UserRepository:
 
     async def find_one_or_none(self, email: str) -> Optional[User]:
         """Поиск пользователя по email"""
-        query = select(User).where(User.email == email)
+        normalized = (email or "").lower().strip()
+        if not normalized:
+            return None
+        query = select(User).where(User.email == normalized)
         result = await self.session.execute(query)
-
+        row = result.scalar_one_or_none()
+        if row:
+            return row
+        query_insensitive = select(User).where(func.lower(User.email) == normalized)
+        result = await self.session.execute(query_insensitive)
         return result.scalar_one_or_none()
 
     async def find_by_yandex_id(self, yandex_id: str) -> Optional[User]:
@@ -42,6 +50,28 @@ class UserRepository:
         self.session.add(db_user)
         await self.session.commit()
         return True
+
+    async def create_user_with_password(
+        self,
+        email: str,
+        password: str,
+        first_name: str = "",
+        last_name: str = "",
+        role: str = UserRole.CREATOR,
+        expires_at: Optional[datetime] = None,
+    ) -> User:
+        db_user = User(
+            email=email.lower().strip(),
+            password=get_password_hash(password),
+            first_name=first_name or None,
+            last_name=last_name or None,
+            role=role,
+            expires_at=expires_at,
+        )
+        self.session.add(db_user)
+        await self.session.flush()
+        await self.session.refresh(db_user)
+        return db_user
 
     async def get_by_id(self, user_id: int) -> Optional[User]:
         """Получение пользователя по ID"""

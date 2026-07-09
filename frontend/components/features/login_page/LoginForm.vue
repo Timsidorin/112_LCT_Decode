@@ -107,8 +107,8 @@ export default {
 		async login() {
 			this.loader = true;
 			let form = new FormData();
-			form.set("username", this.email);
-			form.set("password", this.password);
+			form.set("username", this.email.trim().toLowerCase());
+			form.set("password", this.password.trim());
 			axios
 				.post(`${__BASE__URL__}/auth/login`, form)
 				.then(async (response) => {
@@ -118,11 +118,16 @@ export default {
 					const redirect = this.$route.query.redirect || "/personal";
 					this.$router.push(redirect);
 				})
-				.catch(() => {
+				.catch((err) => {
+					const detail = err?.response?.data?.detail;
 					this.$q.notify({
 						position: "top",
 						type: "negative",
-						message: "Произошла ошибка!",
+						message:
+							detail ||
+							(err?.response?.status === 401
+								? "Неверный email или пароль"
+								: "Произошла ошибка!"),
 					});
 				})
 				.finally(() => {

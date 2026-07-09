@@ -101,6 +101,7 @@ services:
       --loglevel=info
       --concurrency=1
       --hostname=worker@%h
+      -B
     environment:
       DB_HOST: db
       REDIS_URL: redis://redis:6379/0

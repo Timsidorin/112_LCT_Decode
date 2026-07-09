@@ -3,16 +3,57 @@
 		<div class="home-inner">
 			<div class="page-header animate-fade-in-up">
 				<h1 class="page-title">
-					Добро пожаловать, {{ userStore.fullName }}
+					{{ userStore.isEmployee ? "Мои тренинги" : `Добро пожаловать, ${userStore.fullName}` }}
 				</h1>
 				<p class="page-subtitle">
-					Управляйте тренингами и следите за прогрессом
+					{{ userStore.isEmployee ? "Тренинги, назначенные вашей организацией" : "Управляйте тренингами и следите за прогрессом" }}
 				</p>
 			</div>
 
 			<div v-if="loading" class="home-loading">
 				<q-spinner-dots size="48px" color="primary" class="home-loading__spinner" />
 				<p class="home-loading__text">Загрузка...</p>
+			</div>
+
+			<div v-else-if="userStore.isEmployee" class="home-stack animate-stagger-children">
+				<section
+					v-if="assignedTrainings.length"
+					class="home-panel home-panel--grow"
+					aria-labelledby="home-assigned-heading"
+				>
+					<div class="home-panel__head">
+						<h2 id="home-assigned-heading" class="home-panel__title">
+							<q-icon name="school" size="20px" class="home-panel__title-icon" />
+							Доступные тренинги
+						</h2>
+					</div>
+					<div class="trainings-grid">
+						<div
+							v-for="item in assignedTrainings"
+							:key="`${item.organization_id}-${item.training_uuid}`"
+							class="training-card relative-position"
+							v-ripple
+							@click="openAssigned(item)"
+						>
+							<div class="training-header">
+								<div class="training-title">{{ item.title }}</div>
+							</div>
+							<div class="training-meta">
+								<div class="training-meta-item">
+									<q-icon name="business" size="16px" />
+									<span>{{ item.organization_name }}</span>
+								</div>
+							</div>
+						</div>
+					</div>
+				</section>
+				<section v-else class="home-panel home-panel--empty animate-scale-in">
+					<div class="empty-inner">
+						<div class="empty-icon"><q-icon name="school" size="48px" /></div>
+						<h2 class="empty-title">Пока нет назначенных тренингов</h2>
+						<p class="empty-desc">Когда организация назначит тренинг, он появится здесь</p>
+					</div>
+				</section>
 			</div>
 
 			<div v-else class="home-stack animate-stagger-children">
@@ -197,13 +238,14 @@
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useUserStore } from "@store/userData.js";
-import { TrainingApi } from "@api";
+import { TrainingApi, organizationApi } from "@api";
 
 const router = useRouter();
 const userStore = useUserStore();
 const trainingApi = new TrainingApi();
 const loading = ref(true);
 const trainings = ref([]);
+const assignedTrainings = ref([]);
 
 const stats = computed(() => ({
 	totalTrainings: trainings.value.length,
@@ -218,12 +260,27 @@ function openEdit(uuid) {
 	window.open(route.href, "_blank");
 }
 
+function openAssigned(item) {
+	if (item.public_link) {
+		router.push(item.public_link);
+	}
+}
+
 onMounted(async () => {
+	if (!userStore.isLoaded) {
+		await userStore.fetchUser();
+	}
 	try {
-		const { data } = await trainingApi.getTrainings();
-		trainings.value = data || [];
+		if (userStore.isEmployee) {
+			const { data } = await organizationApi.assignedTrainings();
+			assignedTrainings.value = data || [];
+		} else {
+			const { data } = await trainingApi.getTrainings();
+			trainings.value = data || [];
+		}
 	} catch {
 		trainings.value = [];
+		assignedTrainings.value = [];
 	} finally {
 		loading.value = false;
 	}

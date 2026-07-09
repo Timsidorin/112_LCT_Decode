@@ -7,7 +7,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator, validator
 
 
 class User(BaseModel):
-    email: EmailStr = Field(..., description="Электронная почта")
+    email: str = Field(..., description="Электронная почта или login ID")
     phone_number: str = Field(
         ..., description="Номер телефона в международном формате, начинающийся с '+'"
     )
@@ -36,20 +36,26 @@ class UserRegister(User):
 
 
 class UserLogin(BaseModel):
-    username: EmailStr
+    username: str
     password: str
+
+
+class UserRole(str, Enum):
+    CREATOR = "creator"
+    EMPLOYEE = "employee"
 
 
 class UserResponse(BaseModel):
     """Ответ API: поля из БД без жёстких правил регистрации (короткие имена из VK и т.п.)."""
 
     id: int
-    email: EmailStr
+    email: str
     phone_number: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     photo: Optional[str] = None
     yandex_id: Optional[str] = None
+    role: UserRole = UserRole.CREATOR
 
     class Config:
         from_attributes = True

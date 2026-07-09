@@ -10,6 +10,7 @@ from routing import (
     auth_router,
     course_router,
     levels_router,
+    organizations_router,
     tags_router,
     tasks_router,
     training_router,
@@ -23,6 +24,7 @@ app = create_base_app(configs)
 app.include_router(auth_router.router)
 app.include_router(training_router.router)
 app.include_router(course_router.router)
+app.include_router(organizations_router.router)
 app.include_router(tags_router.router)
 app.include_router(levels_router.router)
 app.include_router(actions_router.router)

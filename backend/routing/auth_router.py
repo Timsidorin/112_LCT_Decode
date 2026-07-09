@@ -173,7 +173,10 @@ async def login_user(
     if user_data:
         final_user_data = user_data
     elif username and password:
-        final_user_data = UserLogin(username=username, password=password)
+        final_user_data = UserLogin(
+            username=username.strip().lower(),
+            password=password.strip(),
+        )
     else:
         raise HTTPException(
             status_code=400,
@@ -183,7 +186,7 @@ async def login_user(
     if access_token is None:
         raise HTTPException(
             status_code=401,
-            detail="Неверный email или пароль",
+            detail="Неверный email или пароль, либо срок действия учётной записи истёк",
             headers={"WWW-Authenticate": "Bearer"},
         )
     return {"access_token": access_token, "token_type": "bearer"}

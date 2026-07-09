@@ -1,4 +1,5 @@
 from datetime import datetime
+from datetime import datetime
 from typing import List, Optional
 
 import sqlalchemy as sa
@@ -6,6 +7,11 @@ from sqlalchemy import ForeignKey, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.database import Base
+
+
+class UserRole:
+    CREATOR = "creator"
+    EMPLOYEE = "employee"
 
 
 class User(Base):
@@ -27,6 +33,12 @@ class User(Base):
     photo: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
     yandex_id: Mapped[Optional[str]] = mapped_column(
         sa.String(64), nullable=True, index=True, unique=True
+    )
+    role: Mapped[str] = mapped_column(
+        sa.String(20), nullable=False, server_default="creator", default=UserRole.CREATOR
+    )
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
     )
     created_trainings: Mapped[List["Training"]] = relationship(
         "models.trainings.Training", back_populates="creator"

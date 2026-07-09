@@ -15,6 +15,7 @@ from scripts.create_initial_actions import create_initial_actions
 from scripts.create_initial_levels import create_initial_levels
 from scripts.create_initial_tags import create_initial_tags
 from scripts.create_user import create_test_user
+from services.temp_employee_accounts_service import TempEmployeeAccountsService
 from utils.pg_sequences import sync_training_steps_id_sequence
 
 
@@ -41,6 +42,9 @@ def create_base_app(configs):
         await create_initial_levels()
         async for session in get_async_session():
             await sync_training_steps_id_sequence(session)
+            removed = await TempEmployeeAccountsService(session).cleanup_expired()
+            if removed:
+                logger.info("Removed {} expired temporary employee accounts on startup", removed)
             await session.commit()
             break
         yield

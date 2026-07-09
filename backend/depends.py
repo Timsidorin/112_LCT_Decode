@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import configs
 from core.database import get_async_session
-from models.users import User
+from models.users import User, UserRole
 from repositories.actions_repository import ActionsRepository
 from repositories.courses_repository import CoursesRepository
 from repositories.levels_repository import LevelsRepository
@@ -17,6 +17,11 @@ from services.courses_service import CoursesService
 from services.external_services.gigachat_tts_service import GigaChatTTSService
 from services.external_services.s3_service import S3Service
 from services.pdf_ai_service import PdfAiService
+from services.organizations_service import OrganizationsService
+from services.temp_employee_accounts_service import (
+    TempEmployeeAccountsService,
+    is_account_expired,
+)
 from services.trainings_service import TrainingsService
 from services.user_service import UserService
 
@@ -76,7 +81,7 @@ async def get_user_service(
 ) -> UserService:
     """Получение сервиса пользователей"""
     repo = UserRepository(session)
-    return UserService(repo)
+    return UserService(repo, session)
 
 
 async def get_trainings_service(
@@ -93,6 +98,12 @@ async def get_courses_service(
     return CoursesService(session)
 
 
+async def get_organizations_service(
+    session: AsyncSession = Depends(get_async_session),
+) -> OrganizationsService:
+    return OrganizationsService(session)
+
+
 async def get_s3_service(
     session: AsyncSession = Depends(get_async_session),
 ) -> S3Service:
@@ -102,6 +113,7 @@ async def get_s3_service(
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
+    session: AsyncSession = Depends(get_async_session),
     user_repo: UserRepository = Depends(get_user_repository),
 ) -> User:
     """
@@ -131,6 +143,21 @@ async def get_current_user(
     if user is None:
         raise credentials_exception
 
+    if is_account_expired(user.expires_at):
+        await TempEmployeeAccountsService(session).cleanup_user_if_expired(user)
+        raise credentials_exception
+
+    return user
+
+
+async def get_current_creator(
+    user: User = Depends(get_current_user),
+) -> User:
+    if user.role == UserRole.EMPLOYEE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Доступ только для создателей тренингов",
+        )
     return user
 
 

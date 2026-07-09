@@ -1,49 +1,50 @@
-# Конструктор Тренингов
+# Конструктор Тренингов (SkillSnap)
 
+Веб-сервис для создания интерактивных тренингов по работе в ПО.
 
-## Содержание 
-1. [Про проект](#About)
-2. [Как запустить проект?](#Start)
-3. [Backend](#Backend)
-4. [Frontend](#Frontend)
+## Запуск на сервере (Docker)
 
+```bash
+nano backend/.env          # секреты, S3, AI, POSTGRES_PASSWORD=admin
+ln -sf backend/.env .env   # опционально, для compose
 
-## About
+docker compose up -d --build
+docker compose logs -f backend
+```
 
-## Start
+Полная инструкция: **[docs/DEPLOY.md](docs/DEPLOY.md)**
 
-### Для настройки frontend
+Стек: FastAPI + Celery + Redis + PostgreSQL + Vue + nginx.
 
+## Локальная разработка
 
-### Для настройки backend
+### Backend
 
-cd backend - переключить директорию на backend
+```bash
+cd backend
+uv sync
+uv run alembic upgrade head
+uv run uvicorn main:app --host 0.0.0.0 --port 8002
+```
 
-uv sync - синхронизировать зависимости
+### Celery worker (отдельный терминал)
 
-uv run alembic revision --autogenerate -m "init" - создать миграцию таблиц
+```bash
+cd backend
+uv run celery -A core.celery_app worker --loglevel=info -P solo -c 1   # Windows
+```
 
-uv run alembic upgrade head  - обновить таблицы в локальной бд
+Подробнее: [backend/scripts/run_celery_worker.md](backend/scripts/run_celery_worker.md)
 
-uv run main.py - запустить backend
+### Frontend
 
-taskkill /F /IM python.exe - удалить питоновские процессы
-taskkill /F /IM node.exe /T - удалить nodejs процессы
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
+## Стек
 
-## Backend 
-![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)
-![JWT](https://img.shields.io/badge/JWT-black?style=for-the-badge&logo=JSON%20web%20tokens)
-![Amazon S3](https://img.shields.io/badge/Amazon%20S3-FF9900?style=for-the-badge&logo=amazons3&logoColor=white)
-![Postgres](https://img.shields.io/badge/postgres-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white)
-
-
-## Frontend
-
-
-vue
-vite
-vue-router
-quasar
-prettier
-eslint
+**Backend:** FastAPI, PostgreSQL, Redis, Celery, S3, Alembic  
+**Frontend:** Vue 3, Vite, Quasar, Pinia

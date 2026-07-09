@@ -2,11 +2,16 @@ from typing import Optional
 
 from fastapi import BackgroundTasks, HTTPException, status
 from pydantic import EmailStr
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import configs
 from models.users import User as UserModel
 from repositories.users_repository import UserRepository
-from schemas.users import User, UserLogin, UserRegister, UserResponse
+from schemas.users import User, UserLogin, UserRegister, UserResponse, UserRole
+from services.temp_employee_accounts_service import (
+    TempEmployeeAccountsService,
+    is_account_expired,
+)
 from utils.security import (
     create_access_token,
     decode_access_token,
@@ -16,43 +21,61 @@ from utils.security import (
 
 
 class UserService:
-    def __init__(self, repo: UserRepository):
+    def __init__(self, repo: UserRepository, session: Optional[AsyncSession] = None):
         self.user_repo = repo
+        self.session = session
+        self.temp_accounts = (
+            TempEmployeeAccountsService(session) if session is not None else None
+        )
+
+    async def _reject_if_expired(self, user) -> bool:
+        if not user or not is_account_expired(user.expires_at):
+            return False
+        if self.temp_accounts:
+            await self.temp_accounts.cleanup_user_if_expired(user)
+        return True
 
     async def register(self, user_data: UserRegister) -> bool:
         return await self.user_repo.add_user(user_data)
 
-    async def authenticate(self, email: EmailStr, password: str):
-        user = await self.user_repo.find_one_or_none(email=email)
+    async def authenticate(self, username: str, password: str):
+        normalized_username = str(username).lower().strip()
+        plain_password = (password or "").strip()
+        if not plain_password:
+            return None
+        user = await self.user_repo.find_one_or_none(normalized_username)
         if (
             not user
             or not user.password
             or not verify_password(
-                plain_password=password, hashed_password=user.password
+                plain_password=plain_password, hashed_password=user.password
             )
         ):
+            return None
+        if await self._reject_if_expired(user):
             return None
         return user
 
     async def login(self, credential: UserLogin) -> Optional[str]:
-        # Используем authenticate_user для проверки email и пароля
         user = await self.authenticate(
-            email=credential.username, password=credential.password
+            username=credential.username, password=credential.password
         )
         if not user:
             return None
 
         access_token = create_access_token(
-            data={"sub": user.email},
+            data={"sub": str(user.email).lower().strip()},
         )
         return access_token
 
     async def get_current_user(self, token: str) -> UserResponse:
         payload = decode_access_token(token=token)
-        email: str = payload.get("sub")
+        username: str = (payload.get("sub") or "").lower().strip()
 
-        user = await self.user_repo.find_one_or_none(email=email)
+        user = await self.user_repo.find_one_or_none(username)
         if user is None:
+            return None
+        if await self._reject_if_expired(user):
             return None
         return UserResponse.model_validate(user)
 

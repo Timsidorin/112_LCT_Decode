@@ -145,3 +145,19 @@ def process_training_video_task(self, task_id: str) -> dict:
         if self.request.retries < self.max_retries:
             raise self.retry(exc=exc, countdown=60)
         raise exc
+
+
+@celery_app.task(name="worker.tasks.cleanup_expired_employee_accounts")
+def cleanup_expired_employee_accounts() -> dict:
+    from services.temp_employee_accounts_service import TempEmployeeAccountsService
+    from worker.task_runtime import get_worker_session_factory
+
+    async def _run() -> int:
+        factory = get_worker_session_factory()
+        async with factory() as session:
+            service = TempEmployeeAccountsService(session)
+            return await service.cleanup_expired()
+
+    removed = run_worker_task(_run())
+    logger.info("Removed {} expired temporary employee accounts", removed)
+    return {"ok": True, "removed": removed}

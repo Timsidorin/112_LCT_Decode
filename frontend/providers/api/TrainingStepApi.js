@@ -13,6 +13,13 @@ export class TrainingStepApi extends BaseApi {
 		return super.createRequest();
 	}
 
+	addStep(trainingUuid, data) {
+		super.httpMethod = "post";
+		super.sourceUrl = `/training/${trainingUuid}/steps`;
+		super.data = data;
+		return super.createRequest();
+	}
+
 	reorderSteps(trainingUuid, data) {
 		super.httpMethod = "patch";
 		super.sourceUrl = `/training/${trainingUuid}/steps/reorder`;
