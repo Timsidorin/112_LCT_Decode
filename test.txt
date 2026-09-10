@@ -1,0 +1,28 @@
+import torch
+import soundfile as sf
+from qwen_tts import Qwen3TTSModel
+
+# 1. Загружаем модель
+model = Qwen3TTSModel.from_pretrained(
+    "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
+    device_map="cuda:0" if torch.cuda.is_available() else "cpu",
+    dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+)
+
+# 2. Текст вызова 112
+text = "Алло, это служба сто двенадцать? Пожалуйста, ответьте! У нас пожар! Огонь на кухне, уже на стены перекинулся! Люди в квартире! Соседи сверху не выходят! Дым уже в подъезде, мы задыхаемся! Приезжайте быстрее, помогите!"
+
+# 3. Генерируем аудио со взрослым голосом
+wavs, sr = model.generate_custom_voice(
+    text=text,
+    language="Russian",
+
+    # ВАРИАНТЫ СПИКЕРОВ (выберите один):
+    speaker="serena",  # Взрослый, глубокий мужской голос (отлично передаёт сильный стресс)
+    # speaker="Anna",   # Зрелый, естественный женский голос (вместо детского Vivian)
+    instruct="Говори очень взволнованно, с паникой и страхом в голосе"
+)
+
+# 4. Сохраняем результат
+sf.write("call_112_qwen_panic.wav", wavs[0], sr)
+print("Готово! Файл сохранён как call_112_qwen_panic.wav")
