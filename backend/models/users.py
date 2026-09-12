@@ -8,6 +8,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.database import Base
 
+from .tasks import ProcessingTask
+from .trainings import Training
 
 class UserRole:
     CREATOR = "creator"
@@ -48,6 +50,3 @@ class User(Base):
     )
 
 
-# Гарантируем регистрацию ProcessingTask в mapper registry до инициализации связей.
-from .tasks import ProcessingTask  # noqa: E402,F401
-from .trainings import Training  # noqa: E402,F401

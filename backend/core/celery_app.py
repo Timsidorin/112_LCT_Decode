@@ -1,7 +1,7 @@
 import os
 import sys
 
-# Ensure backend root is discoverable for Celery imports.
+
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
 from celery import Celery

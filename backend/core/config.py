@@ -11,13 +11,13 @@ class Configs(BaseSettings):
     # ------------ Настройки проекта ------------
     PROJECT_NAME: str = "Конструктор Тренингов"
     PROJECT_DESCRIPTION: str = (
-        "веб-сервис Конструктор тренингов. \nТестовый пользователь: test@example.com string"
+        "Учебный симулятор подготовки диспетчеров экстренных служб города по вызовам от системы 112. \nТестовый пользователь: test@example.com string"
     )
 
     # ------------ Веб-сервер ------------
     HOST: str = Field(default="localhost", env="HOST")
     SERVER_HOST: str = Field(default="", env="SERVER_HOST")
-    PORT: int = 8003
+    PORT: int = 8004
 
     # ------------ Логирование ------------
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
@@ -60,20 +60,13 @@ class Configs(BaseSettings):
     AI_BASE_URL: Optional[str] = Field(
         default="https://routerai.ru/api/v1", env="AI_BASE_URL"
     )
-    # https://api.vsellm.ru/v1
-    # https://routerai.ru/api/v1"
-    # default="qwen/qwen3-vl-30b-a3b-instruct"
-    # Instruct без «thinking»: быстрее и предсказуемее JSON для шагов (см. каталог VseLLM).
+
     AI_MODEL: Optional[str] = Field(
         default="qwen/qwen3-vl-30b-a3b-instruct", env="AI_MODEL"
     )
-    # Сколько кадров в секунду «видит» VL-модель при разборе (больше — точнее быстрые клики, тяжелее запрос).
     AI_VIDEO_FPS: int = Field(default=4, env="AI_VIDEO_FPS")
 
     AI_VIDEO_FPS_MAX: int = Field(default=12, env="AI_VIDEO_FPS_MAX")
-
-    # Перед отправкой в AI всегда собирать облегчённое видео (разрешение + разрежение кадров).
-    # Иначе в модель уходит полный исходник (десятки MB base64) — долго и хуже стабильность разбора UI.
     AI_VIDEO_ALWAYS_ANALYSIS_PROXY: bool = Field(
         default=True, env="AI_VIDEO_ALWAYS_ANALYSIS_PROXY"
     )
@@ -86,14 +79,9 @@ class Configs(BaseSettings):
     AI_VIDEO_ANALYSIS_JPEG_QUALITY: int = Field(
         default=54, env="AI_VIDEO_ANALYSIS_JPEG_QUALITY"
     )
-
-    # Потолок размера base64 при отправке видео в AI (байты строки base64).
-    # Большие исходные файлы сжимаются в VideoCompressor; лимит нужен как страховка для API.
     AI_VIDEO_MAX_BASE64_BYTES: int = Field(
         default=250_000_000, env="AI_VIDEO_MAX_BASE64_BYTES"
     )
-    # Целевой потолок до отправки в VL (меньше — быстрее и меньше 5xx у провайдера).
-    # Сжатие дожимает прокси, пока оценка base64 не станет не выше этого значения (и не выше MAX).
     AI_VIDEO_SOFT_BASE64_BYTES: int = Field(
         default=22_000_000, env="AI_VIDEO_SOFT_BASE64_BYTES"
     )
@@ -101,7 +89,6 @@ class Configs(BaseSettings):
     AI_VIDEO_FRAME_OFFSET_SEC: float = Field(
         default=0.10, env="AI_VIDEO_FRAME_OFFSET_SEC"
     )
-    # Сдвиг вперёд при извлечении кадра «после» (анимации/переходы UI успели завершиться).
     AI_VIDEO_AFTER_FRAME_LAG_SEC: float = Field(
         default=0.12, env="AI_VIDEO_AFTER_FRAME_LAG_SEC"
     )
@@ -109,8 +96,6 @@ class Configs(BaseSettings):
     # ------------------- AI Voice (SaluteSpeech) ---------------------------
     CLIENT_ID_SALUTESPEECH: str = Field(default="", env="CLIENT_ID_SALUTESPEECH")
     SALUT_SPEECH_AUTORIZATION: str = Field(default="", env="SALUT_SPEECH_AUTORIZATION")
-
-    # ------------------- Фоновые задачи (Celery + Redis) -------------------
     REDIS_URL: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")
     CELERY_BROKER_URL: str = Field(
         default="redis://localhost:6379/0", env="CELERY_BROKER_URL"
@@ -118,8 +103,6 @@ class Configs(BaseSettings):
     CELERY_RESULT_BACKEND: str = Field(
         default="redis://localhost:6379/0", env="CELERY_RESULT_BACKEND"
     )
-
-    # ------------------- OAuth Yandex ID -----------------------------------
     YANDEX_CLIENT_ID: str = Field(default="", env="YANDEX_CLIENT_ID")
     YANDEX_CLIENT_SECRET: str = Field(
         default="",
